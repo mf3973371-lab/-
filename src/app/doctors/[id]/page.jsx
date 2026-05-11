@@ -154,14 +154,19 @@ export default function DoctorDetailsPage() {
     );
   }
 
+  const nameLower = doctor.userName?.toLowerCase() || "";
   const isFemale = doctor.gender?.toLowerCase() === "female" || 
+                   nameLower.includes("mrehan") || 
+                   nameLower.includes("loujain") ||
+                   nameLower.includes("sara") ||
+                   nameLower.includes("salma") ||
+                   nameLower.includes("nourhan") ||
                    doctor.userName?.includes("نهى") || 
                    doctor.userName?.includes("سارة") || 
                    doctor.userName?.includes("فاطمة") || 
                    doctor.userName?.includes("أميرة") ||
                    doctor.userName?.includes("هند") ||
-                   doctor.userName?.includes("loujain") || 
-                   doctor.userName?.includes("Loujain") || 
+                   doctor.userName?.includes("ميريهان") ||
                    (doctor.specialization && doctor.specialization.includes("نساء"));
                    
   const avatarSrc = isFemale ? "/doctorgirl.png" : "/doctorman.png";
@@ -189,13 +194,29 @@ export default function DoctorDetailsPage() {
               <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-bl-[5rem]"></div>
               
               <div className="flex flex-col md:flex-row gap-8 items-center md:items-start relative z-10">
-                <div className="w-48 h-48 rounded-[2.5rem] bg-slate-100 border-4 border-white shadow-xl overflow-hidden shrink-0">
-                  <img 
-                    src={avatarSrc} 
-                    alt={doctor.userName}
-                    className="w-full h-full object-cover scale-105"
-                  />
-                </div>
+                <motion.div 
+                  animate={{ 
+                    boxShadow: [
+                      "0 0 0 0px rgba(59, 130, 246, 0.4)", 
+                      "0 0 0 12px rgba(59, 130, 246, 0.15)", 
+                      "0 0 0 24px rgba(59, 130, 246, 0)"
+                    ] 
+                  }}
+                  transition={{ 
+                    repeat: Infinity, 
+                    duration: 3, 
+                    ease: "easeInOut" 
+                  }}
+                  className="w-44 h-44 rounded-full bg-white p-[6px] shadow-2xl shrink-0 ring-4 ring-blue-500/10 overflow-visible"
+                >
+                  <div className="w-full h-full rounded-full overflow-hidden bg-slate-50 relative">
+                    <img 
+                      src={avatarSrc} 
+                      alt={doctor.userName}
+                      className="w-full h-full object-cover scale-105 hover:scale-115 transition-transform duration-500"
+                    />
+                  </div>
+                </motion.div>
                 
                 <div className="text-center md:text-right flex-1">
                   <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-4">

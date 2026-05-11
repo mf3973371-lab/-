@@ -194,12 +194,19 @@ export default function DoctorsSection() {
                   className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12 items-stretch"
                 >
                   {displayedDoctors.map((doctor, index) => {
+                    const nameLower = doctor.userName?.toLowerCase() || "";
                     const isFemale = doctor.gender?.toLowerCase() === "female" || 
+                                     nameLower.includes("mrehan") || 
+                                     nameLower.includes("loujain") || 
+                                     nameLower.includes("sara") || 
+                                     nameLower.includes("salma") || 
                                      doctor.userName?.includes("نهى") || 
                                      doctor.userName?.includes("سارة") || 
                                      doctor.userName?.includes("فاطمة") || 
                                      doctor.userName?.includes("أميرة") ||
                                      doctor.userName?.includes("هند") ||
+                                     doctor.userName?.includes("ميريهان") ||
+                                     doctor.userName?.includes("سلمى") ||
                                      (doctor.specialization && doctor.specialization.includes("نساء"));
                     
                     const avatarSrc = isFemale ? "/doctorgirl.png" : "/doctorman.png";
