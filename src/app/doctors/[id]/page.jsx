@@ -154,6 +154,18 @@ export default function DoctorDetailsPage() {
     );
   }
 
+  const isFemale = doctor.gender?.toLowerCase() === "female" || 
+                   doctor.userName?.includes("نهى") || 
+                   doctor.userName?.includes("سارة") || 
+                   doctor.userName?.includes("فاطمة") || 
+                   doctor.userName?.includes("أميرة") ||
+                   doctor.userName?.includes("هند") ||
+                   doctor.userName?.includes("loujain") || 
+                   doctor.userName?.includes("Loujain") || 
+                   (doctor.specialization && doctor.specialization.includes("نساء"));
+                   
+  const avatarSrc = isFemale ? "/doctorgirl.png" : "/doctorman.png";
+
   return (
     <div className="min-h-screen bg-slate-50 py-12 md:py-24" dir="rtl">
       <div className="max-w-6xl mx-auto px-4">
@@ -179,9 +191,9 @@ export default function DoctorDetailsPage() {
               <div className="flex flex-col md:flex-row gap-8 items-center md:items-start relative z-10">
                 <div className="w-48 h-48 rounded-[2.5rem] bg-slate-100 border-4 border-white shadow-xl overflow-hidden shrink-0">
                   <img 
-                    src={doctor.gender === "female" ? "https://i.postimg.cc/Gh4sP8C1/signup-icon.png" : "https://i.postimg.cc/Gh4sP8C1/signup-icon.png"} 
+                    src={avatarSrc} 
                     alt={doctor.userName}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover scale-105"
                   />
                 </div>
                 
