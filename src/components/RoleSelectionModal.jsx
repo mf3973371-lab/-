@@ -17,7 +17,7 @@ export default function RoleSelectionModal({ isOpen, onSelect, onClose }) {
       <motion.div 
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-md bg-white rounded-[2.5rem] p-8 relative shadow-2xl"
+        className="w-full max-w-md bg-white rounded-[2.5rem] p-8 relative shadow-2xl max-h-[90vh] overflow-y-auto"
       >
         <button onClick={onClose} className="absolute left-6 top-6 p-2 rounded-full hover:bg-slate-100 transition-colors">
           <X className="w-5 h-5 text-slate-400" />

@@ -291,7 +291,7 @@ export default function DoctorsSection() {
                           <div className="mb-6 relative z-10 h-10 flex items-center justify-center">
                             <div className="flex items-center gap-2 text-blue-600 text-sm font-black bg-gradient-to-r from-blue-50 to-blue-100/40 border border-blue-100/60 px-5 py-3 rounded-2xl inline-flex shadow-[0_4px_15px_rgba(59,130,246,0.02)] max-w-full">
                               <Stethoscope className="w-4.5 h-4.5 text-blue-500 shrink-0" />
-                              <span className="truncate">{doctor.specialization}</span>
+                              <span className="truncate">{doctor.specialization?.trim()}</span>
                             </div>
                           </div>
 

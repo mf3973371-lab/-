@@ -17,7 +17,7 @@ import {
 const specializations = [
   "الباطنة العامة", "أمراض القلب", "أمراض الصدر", "الجراحة العامة", 
   "أمراض الكلى", "الطب الطارئ", "أمراض الدم", "الأمراض الجلدية", 
-  "الطب النفسي", "التخدير", "العلاج الطبيعي"
+  " الطب النفسي", " التخدير", " العلاج الطبيعي"
 ];
 
 export default function CompleteProfileModal({ isOpen, onClose, token, role, onComplete }) {
@@ -114,7 +114,7 @@ export default function CompleteProfileModal({ isOpen, onClose, token, role, onC
       <motion.div 
         initial={{ opacity: 0, scale: 0.9, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="w-full max-w-lg glass-card rounded-[2.5rem] shadow-2xl border border-white overflow-hidden relative"
+        className="w-full max-w-lg glass-card rounded-[2.5rem] shadow-2xl border border-white relative max-h-[90vh] overflow-y-auto"
       >
         <button 
           onClick={onClose}

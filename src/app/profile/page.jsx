@@ -606,7 +606,7 @@ export default function ProfilePage() {
 
                 <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 pt-2">
                   <span className="px-4 py-1.5 bg-white/10 backdrop-blur-md rounded-xl text-xs font-black border border-white/10 uppercase tracking-widest">
-                    طبيب متخصص • {userData.specialization || "الطب العام"}
+                    طبيب متخصص • {userData.specialization?.trim() || "الطب العام"}
                   </span>
                   <div className="flex items-center gap-1.5 bg-cyan-500/10 text-cyan-300 border border-cyan-500/25 px-4 py-1.5 rounded-xl text-xs font-bold">
                     <Shield className="w-4 h-4" />
@@ -765,7 +765,7 @@ export default function ProfilePage() {
                   ) : (
                     <div className="space-y-4 relative z-10">
                       <InfoItem icon={<Shield />} label="الرقم التعريفي الخاص بك (ID)" value={userData._id} />
-                      <InfoItem icon={<Stethoscope />} label="التخصص الحالي" value={userData.specialization} />
+                      <InfoItem icon={<Stethoscope />} label="التخصص الحالي" value={userData.specialization?.trim()} />
                       <InfoItem icon={<DollarSign />} label="قيمة الكشف" value={`${userData.price} جنيه مصري`} />
                       <InfoItem icon={<Phone />} label="رقم الهاتف" value={userData.phone} />
                       <InfoItem icon={<Mail />} label="البريد الإلكتروني" value={userData.email} />
@@ -1505,7 +1505,7 @@ export default function ProfilePage() {
 
                       {userData.role?.toLowerCase() === "doctor" && (
                         <>
-                          <InfoItem icon={<Stethoscope />} label="التخصص الحالي" value={userData.specialization} />
+                          <InfoItem icon={<Stethoscope />} label="التخصص الحالي" value={userData.specialization?.trim()} />
                           <InfoItem icon={<DollarSign />} label="قيمة الكشف" value={`${userData.price} جنيه مصري`} />
                         </>
                       )}
