@@ -67,10 +67,19 @@ export default function LoginPage() {
         const token = data.access_token;
         setAuthToken(token);
 
-        // If profile is incomplete, show the modal
-        // Note: You should check if the user is new or if data is missing.
-        // For now, let's assume we might need to complete it.
-        setShowProfileModal(true);
+        // التحقق ما إذا كان الملف الشخصي مكتملاً بالفعل من رد السيرفر
+        const isProfileComplete = data.profileCompleted === true || data.user?.profileCompleted === true;
+
+        if (isProfileComplete) {
+          // مستخدم قديم: حفظ البيانات والتحويل مباشرة للبروفايل
+          localStorage.setItem("token", token);
+          localStorage.setItem("refresh_token", data.refresh_token || data.refreshToken || token);
+          localStorage.setItem("role", data.role || selectedRole);
+          router.push("/profile");
+        } else {
+          // مستخدم جديد: إظهار مودال استكمال البيانات
+          setShowProfileModal(true);
+        }
       } else {
         setError(data.message || "فشل تسجيل الدخول بجوجل.");
       }

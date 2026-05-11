@@ -86,7 +86,18 @@ export default function RegisterPage() {
       if (response.ok || data.message === "Done") {
         const token = data.access_token;
         setAuthToken(token);
-        setShowProfileModal(true);
+        
+        // التحقق ما إذا كان الملف الشخصي مكتملاً بالفعل
+        const isProfileComplete = data.profileCompleted === true || data.user?.profileCompleted === true;
+
+        if (isProfileComplete) {
+          localStorage.setItem("token", token);
+          localStorage.setItem("refresh_token", data.refresh_token || data.refreshToken || token);
+          localStorage.setItem("role", data.role || selectedRole);
+          router.push("/profile");
+        } else {
+          setShowProfileModal(true);
+        }
       } else {
         setError(data.message || "فشل تسجيل الدخول بجوجل.");
       }
@@ -117,7 +128,18 @@ export default function RegisterPage() {
       if (response.ok || data.message === "Done") {
         const token = data.access_token;
         setAuthToken(token);
-        setShowProfileModal(true);
+        
+        // التحقق ما إذا كان الملف الشخصي مكتملاً بالفعل
+        const isProfileComplete = data.profileCompleted === true || data.user?.profileCompleted === true;
+
+        if (isProfileComplete) {
+          localStorage.setItem("token", token);
+          localStorage.setItem("refresh_token", data.refresh_token || data.refreshToken || token);
+          localStorage.setItem("role", data.role || selectedRole);
+          router.push("/profile");
+        } else {
+          setShowProfileModal(true);
+        }
       } else {
         setError(data.message || "فشل تسجيل الدخول بجوجل.");
       }
