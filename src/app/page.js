@@ -3,6 +3,7 @@ import HeroSection from "@/components/HeroSection";
 import FeaturesSection from "@/components/FeaturesSection";
 import VideoShowcase from "@/components/VideoShowcase";
 import ServicesSection from "@/components/ServicesSection";
+import AiSection from "@/components/AiSection";
 import DiseaseSearch from "@/components/DiseaseSearch";
 import DoctorsSection from "@/components/DoctorsSection";
 import TestimonialsSection from "@/components/TestimonialsSection";
@@ -17,6 +18,7 @@ export default function Home() {
       <FeaturesSection />
       <VideoShowcase />
       <ServicesSection />
+      <AiSection />
       <DiseaseSearch />
       <DoctorsSection />
       <TestimonialsSection />

@@ -59,7 +59,12 @@ export default function Navbar() {
               onMouseEnter={() => setShowAiDropdown(true)}
               onMouseLeave={() => setShowAiDropdown(false)}
             >
-              <button className="text-slate-600 hover:text-primary transition-colors font-black flex items-center gap-1 cursor-pointer py-2 group">
+              <button 
+                onClick={() => {
+                  document.getElementById("ai-diagnosis")?.scrollIntoView({ behavior: "smooth" });
+                }}
+                className="text-slate-600 hover:text-primary transition-colors font-black flex items-center gap-1 cursor-pointer py-2 group"
+              >
                 <span className="bg-gradient-to-r from-indigo-600 to-primary bg-clip-text text-transparent">الذكاء الاصطناعي</span>
                 <ChevronDown className={`w-4 h-4 text-primary transition-transform duration-300 ${showAiDropdown ? 'rotate-180' : ''}`} />
               </button>
