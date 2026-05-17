@@ -22,14 +22,16 @@ import {
   Droplet,
   Activity,
   Heart,
-  Award
+  Award,
+  Star
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import UpdatePasswordModal from "@/components/UpdatePasswordModal";
 import EditPatientModal from "@/components/EditPatientModal";
-
-
+import { db } from "@/lib/firebase";
+import { collection, addDoc, query, where, getDocs, orderBy, onSnapshot, deleteDoc, doc } from "firebase/firestore";
+import { Bell, Trash2 } from "lucide-react";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -47,6 +49,21 @@ export default function ProfilePage() {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
   const [editingPatient, setEditingPatient] = useState(null);
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [ratingAppointment, setRatingAppointment] = useState(null);
+  const [ratingValue, setRatingValue] = useState(5);
+  const [ratingComment, setRatingComment] = useState("");
+  const [isRatingLoading, setIsRatingLoading] = useState(false);
+
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [appToCancel, setAppToCancel] = useState(null);
+  const [recommendedDoctors, setRecommendedDoctors] = useState([]);
+  const [showRecsModal, setShowRecsModal] = useState(false);
+
+  const [notifications, setNotifications] = useState([]);
+  const [doctorRatings, setDoctorRatings] = useState([]);
+  const [showNotificationsModal, setShowNotificationsModal] = useState(false);
 
   const handleLogout = async (type = "current") => {
     setLogoutLoading(true);
@@ -104,7 +121,22 @@ export default function ProfilePage() {
   }, [router]);
 
   useEffect(() => {
-    if (userData?.role === "Doctor" && appointmentForm.date) {
+    if (userData) {
+      const id = userData._id || userData.id || userData.userId;
+      if (id) {
+        const unsubscribe = listenToNotifications(id);
+        if (userData.role?.toLowerCase() === "doctor") {
+          fetchDoctorRatings(id);
+        }
+        return () => {
+          if (unsubscribe) unsubscribe();
+        };
+      }
+    }
+  }, [userData]);
+
+  useEffect(() => {
+    if (userData?.role?.toLowerCase() === "doctor" && appointmentForm.date) {
       fetchAvailability(appointmentForm.date);
     }
   }, [appointmentForm.date, userData?.role]);
@@ -172,44 +204,144 @@ export default function ProfilePage() {
     
     if (!appointmentId) {
       const keys = Object.keys(appointment).join(", ");
-      alert(`لم يتم العثور على معرّف للحجز! الحقول المتوفرة: ${keys}\nالرجاء تصوير هذه الرسالة للمبرمج.`);
-      console.error("Appointment missing ID field. Available fields:", Object.keys(appointment));
+      alert(`لم يتم العثور على معرّف للحجز! الحقول المتوفرة: ${keys}`);
       return;
     }
 
-    // Permanently removed blocking dialog as it halts the client execution thread in this environment
-    const isConfirmed = true;
+    setAppToCancel(appointment);
+    setShowCancelModal(true);
+  };
+
+  const confirmCancelAppointment = async () => {
+    if (!appToCancel) return;
+    const appointmentId = appToCancel._id || appToCancel.id || appToCancel.appointmentId || appToCancel.bookingId || appToCancel.reservationId;
 
     setCancelLoading(appointmentId);
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     const role = typeof window !== "undefined" ? (localStorage.getItem("role") || "patient") : "patient";
     
-    console.log("INITIATING PATCH CALL to /api/appointment/cancel/" + appointmentId);
-    
     try {
       const response = await fetch(`/api/appointment/cancel/${appointmentId}`, {
         method: "PATCH",
         headers: {
+          "Content-Type": "application/json",
           "authorization": `${role.toLowerCase()} ${token}`
-        }
+        },
+        body: JSON.stringify({
+          reason: cancelReason,
+          role: role,
+          specialization: appToCancel.doctorId?.specialization || appToCancel.doctor?.specialization || "",
+          doctorId: appToCancel.doctorId?._id || appToCancel.doctorId || appToCancel.doctor?._id || ""
+        })
       });
       
-      console.log("HTTP Network level RESPONSE received!", response.status);
-      
       const data = await response.json();
-      console.log("Received cancellation parsed JSON result:", data);
 
       if (response.ok || data.message === "Done" || data.message?.includes("Done")) {
-        alert("تم إلغاء الموعد بنجاح");
-        fetchMyAppointments(); // Update UI
+        
+        // --- FIREBASE NOTIFICATION LOGIC ---
+        try {
+          const targetUserId = role.toLowerCase() === 'doctor' 
+            ? (appToCancel.patientId?._id || appToCancel.patientId || appToCancel.userId?._id || appToCancel.userId || "unknown_patient")
+            : (appToCancel.doctorId?._id || appToCancel.doctorId || appToCancel.doctor?._id || "unknown_doctor");
+            
+          const senderName = userData?.fName ? `${userData.fName} ${userData.lName}` : "المستخدم";
+          
+          await addDoc(collection(db, 'notifications'), {
+            targetId: targetUserId, // Who receives it
+            senderId: userData?._id || userData?.id || "unknown",
+            senderRole: role,
+            message: `تم إلغاء الموعد بواسطة ${role.toLowerCase() === 'doctor' ? 'الطبيب' : 'المريض'} ${senderName}. السبب: ${cancelReason}`,
+            appointmentId: appointmentId,
+            createdAt: new Date().toISOString(),
+            read: false,
+            recommendations: (role.toLowerCase() === 'doctor' && data.recommendations) ? data.recommendations : null,
+            debugAppInfo: JSON.stringify(appToCancel).substring(0, 300) // For debugging structure
+          });
+
+          // --- EMAIL NOTIFICATION LOGIC ---
+          const targetEmail = role.toLowerCase() === 'doctor'
+            ? (appToCancel.patientId?.email || appToCancel.userId?.email || appToCancel.email)
+            : (appToCancel.doctorId?.email || appToCancel.doctor?.email);
+
+          if (targetEmail) {
+            let emailMessage = `مرحباً،\n\nنود إعلامك بأنه قد تم إلغاء الحجز الخاص بك بواسطة ${role.toLowerCase() === 'doctor' ? 'الطبيب' : 'المريض'} (${senderName}).\n\nالسبب المذكور للإلغاء:\n"${cancelReason}"\n\n`;
+            
+            if (role.toLowerCase() === 'doctor') {
+              emailMessage += `لقد قمنا بتوفير أطباء بدلاء في نفس التخصص. يرجى فتح الموقع لحجز موعد جديد مع أحد الأطباء المقترحين.\nرابط الموقع: https://shefa-eight.vercel.app/\n\n`;
+            }
+            emailMessage += `مع تمنياتنا لك بدوام الصحة والعافية.`;
+
+            await fetch('/api/send-email', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                to: targetEmail,
+                subject: 'إشعار إلغاء موعد - منصة شفاء',
+                message: emailMessage
+              })
+            });
+            console.log("Email sent successfully to:", targetEmail);
+          } else {
+            console.log("لم يتم إرسال إيميل لعدم توفر البريد الإلكتروني للطرف الآخر في بيانات الحجز.");
+          }
+          // ------------------------------------
+
+        } catch (fbErr) {
+          console.error("Failed to send Firebase notification:", fbErr);
+          alert("حدث خطأ أثناء إرسال الإشعار لـ Firebase: " + fbErr.message);
+        }
+        // ------------------------------------
+
+        alert("تم إلغاء الموعد بنجاح وتم إرسال الإشعار للطرف الآخر.");
+        setShowCancelModal(false);
+        setCancelReason("");
+        
+        if (data.recommendations && data.recommendations.length > 0) {
+          if (role.toLowerCase() !== "doctor") {
+            setRecommendedDoctors(data.recommendations);
+            setShowRecsModal(true);
+          }
+        }
+        
+        fetchMyAppointments();
       } else {
         alert(data.message || "فشل إلغاء الموعد");
       }
     } catch (err) {
       console.error("Cancellation process error:", err);
-      alert("خطأ في الاتصال بالسيرفر أثناء محاولة الإلغاء");
+      alert("خطأ في الاتصال بالسيرفر");
     } finally {
       setCancelLoading(null);
+    }
+  };
+
+  const handleRateAppointment = async (e) => {
+    e.preventDefault();
+    setIsRatingLoading(true);
+
+    try {
+      // Write directly to Firestore from the frontend
+      const ratingData = {
+        appointmentId: ratingAppointment._id || ratingAppointment.id,
+        doctorId: ratingAppointment.doctorId?._id,
+        rating: ratingValue,
+        comment: ratingComment,
+        createdAt: new Date().toISOString()
+      };
+
+      await addDoc(collection(db, 'ratings'), ratingData);
+
+      alert("تم إرسال تقييمك بنجاح في قاعدة البيانات (Firebase)! شكراً لك ✨");
+      setShowRatingModal(false);
+      setRatingAppointment(null);
+      setRatingValue(5);
+      setRatingComment("");
+    } catch (err) {
+      console.error("Firebase Rating Error:", err);
+      alert("خطأ في الاتصال بقاعدة البيانات Firebase");
+    } finally {
+      setIsRatingLoading(false);
     }
   };
 
@@ -307,6 +439,69 @@ export default function ProfilePage() {
       setError("خطأ في الاتصال بالسيرفر");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const listenToNotifications = (userId) => {
+    if (!userId) return;
+    const q = query(collection(db, "notifications"), where("targetId", "==", userId));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const notifs = [];
+      let allRecs = [];
+      snapshot.forEach((doc) => {
+        const d = doc.data();
+        notifs.push({ id: doc.id, ...d });
+        if (d.recommendations && d.recommendations.length > 0) {
+          allRecs = [...allRecs, ...d.recommendations];
+        }
+      });
+      // Sort desc by time since orderBy requires composite index with where
+      notifs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      setNotifications(notifs);
+
+      // إذا كان المستخدم مريضاً ووصله إشعار فيه مقترحات، نعرضهم له
+      if (allRecs.length > 0) {
+        const uniqueRecs = Array.from(new Map(allRecs.map(item => [item._id || item.id, item])).values());
+        setRecommendedDoctors(prev => {
+          // دمج المقترحات الجديدة مع الحالية لضمان عدم ضياعها
+          const merged = [...prev, ...uniqueRecs];
+          return Array.from(new Map(merged.map(item => [item._id || item.id, item])).values());
+        });
+      }
+    });
+    return unsubscribe;
+  };
+
+  const fetchDoctorRatings = async (doctorId) => {
+    if (!doctorId) return;
+    try {
+      const q = query(collection(db, "ratings"), where("doctorId", "==", doctorId));
+      const snapshot = await getDocs(q);
+      const ratings = [];
+      snapshot.forEach(doc => ratings.push({ id: doc.id, ...doc.data() }));
+      setDoctorRatings(ratings);
+    } catch (err) {
+      console.error("Failed to fetch doctor ratings:", err);
+    }
+  };
+
+  const handleDeleteNotification = async (id) => {
+    if (!window.confirm("هل أنت متأكد من مسح هذا الإشعار؟")) return;
+    try {
+      await deleteDoc(doc(db, "notifications", id));
+    } catch (err) {
+      console.error("Error deleting notification:", err);
+      alert("حدث خطأ أثناء مسح الإشعار.");
+    }
+  };
+
+  const handleDeleteRating = async (id) => {
+    if (!window.confirm("هل أنت متأكد من مسح هذا التقييم؟")) return;
+    try {
+      await deleteDoc(doc(db, "ratings", id));
+    } catch (err) {
+      console.error("Error deleting rating:", err);
+      alert("حدث خطأ أثناء مسح التقييم.");
     }
   };
 
@@ -514,6 +709,172 @@ export default function ProfilePage() {
         isOpen={showUpdatePasswordModal}
         onClose={() => setShowUpdatePasswordModal(false)}
       />
+      {/* Rating Modal */}
+      {showRatingModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md" dir="rtl">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="w-full max-w-md bg-white rounded-[2.5rem] shadow-2xl overflow-hidden p-8"
+          >
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 bg-amber-100 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Star className="w-8 h-8 fill-current" />
+              </div>
+              <h3 className="text-2xl font-black text-slate-800">تقييم زيارتك</h3>
+              <p className="text-slate-500 font-bold mt-1">كيف كانت تجربتك مع د. {ratingAppointment?.doctorId?.userName}؟</p>
+            </div>
+
+            <form onSubmit={handleRateAppointment} className="space-y-6">
+              <div className="flex justify-center gap-2 mb-4">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setRatingValue(star)}
+                    className={`text-3xl transition-all ${ratingValue >= star ? "text-amber-400 scale-110" : "text-slate-200"}`}
+                  >
+                    <Star className={`w-10 h-10 ${ratingValue >= star ? "fill-current" : ""}`} />
+                  </button>
+                ))}
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-slate-500 mr-2">ملاحظاتك (اختياري)</label>
+                <textarea
+                  value={ratingComment}
+                  onChange={(e) => setRatingComment(e.target.value)}
+                  placeholder="أخبرنا المزيد عن تجربتك..."
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/10 focus:border-primary/50 outline-none transition-all font-bold text-sm h-32 resize-none"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  disabled={isRatingLoading}
+                  className="flex-1 py-4 bg-gradient-to-r from-primary to-primary-dark text-white rounded-2xl font-black text-base shadow-lg shadow-primary/25 hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center justify-center gap-2"
+                >
+                  {isRatingLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "إرسال التقييم"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowRatingModal(false)}
+                  className="px-6 py-4 bg-slate-100 text-slate-500 rounded-2xl font-bold text-sm hover:bg-slate-200 transition-all"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Cancellation Reason Modal */}
+      {showCancelModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md" dir="rtl">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="w-full max-w-md bg-white rounded-[2.5rem] shadow-2xl overflow-hidden p-8"
+          >
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <LogOut className="w-8 h-8" />
+              </div>
+              <h3 className="text-2xl font-black text-slate-800">إلغاء الموعد</h3>
+              <p className="text-slate-500 font-bold mt-1">يرجى توضيح سبب الإلغاء لمساعدة الطبيب.</p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-slate-500 mr-2">سبب الإلغاء</label>
+                <textarea
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  placeholder="مثال: تغيير في المواعيد، ظرف طارئ..."
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-red-500/10 focus:border-red-500/50 outline-none transition-all font-bold text-sm h-32 resize-none"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={confirmCancelAppointment}
+                  disabled={cancelLoading}
+                  className="flex-1 py-4 bg-red-500 text-white rounded-2xl font-black text-base shadow-lg shadow-red-500/25 hover:bg-red-600 active:translate-y-0 transition-all flex items-center justify-center gap-2"
+                >
+                  {cancelLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "تأكيد الإلغاء"}
+                </button>
+                <button
+                  onClick={() => setShowCancelModal(false)}
+                  className="px-6 py-4 bg-slate-100 text-slate-500 rounded-2xl font-bold text-sm hover:bg-slate-200 transition-all"
+                >
+                  تراجع
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Recommended Doctors Modal */}
+      {showRecsModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md" dir="rtl">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="w-full max-w-2xl bg-white rounded-[3rem] shadow-2xl overflow-hidden p-8 max-h-[90vh] overflow-y-auto"
+          >
+            <div className="text-center mb-10">
+              <div className="w-20 h-20 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Stethoscope className="w-10 h-10" />
+              </div>
+              <h3 className="text-3xl font-black text-slate-800">نأسف لإلغاء موعدك!</h3>
+              <p className="text-slate-500 font-bold mt-2 text-lg">إليك بعض الأطباء المقترحين في نفس التخصص لراحتك:</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              {recommendedDoctors.map((doc) => (
+                <div key={doc._id} className="p-6 rounded-3xl border border-slate-100 bg-slate-50/50 hover:border-blue-400 hover:bg-white hover:shadow-xl transition-all group">
+                  <div className="flex gap-4 items-center mb-4">
+                    <div className="w-14 h-14 rounded-2xl overflow-hidden bg-white border border-slate-200 group-hover:scale-110 transition-transform">
+                      <img 
+                        src={doc.gender === 'female' ? '/doctorgirl.png' : '/doctorman.png'} 
+                        alt={doc.userName} 
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-slate-800 text-lg">د. {doc.userName}</h4>
+                      <p className="text-blue-600 text-xs font-bold">{doc.specialization}</p>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center mt-2 pt-4 border-t border-slate-200/50">
+                    <div className="flex items-center gap-1 text-amber-500">
+                      <Star className="w-4 h-4 fill-current" />
+                      <span className="text-xs font-black">4.9</span>
+                    </div>
+                    <Link 
+                      href={`/doctors/${doc._id}`}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-black hover:bg-blue-700 transition-all"
+                    >
+                      حجز موعد جديد
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setShowRecsModal(false)}
+              className="w-full py-4 bg-slate-800 text-white rounded-2xl font-black text-base hover:bg-slate-900 transition-all"
+            >
+              إغلاق
+            </button>
+          </motion.div>
+        </div>
+      )}
+
       {showLogoutModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md" dir="rtl">
           <motion.div
@@ -1105,6 +1466,85 @@ export default function ProfilePage() {
                   )}
                 </motion.div>
 
+                {/* Notifications Panel FOR DOCTOR */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="glass-card bg-white/30 border-white/50 backdrop-blur-2xl rounded-[3rem] p-8 md:p-10 shadow-2xl border border-white mt-8"
+                >
+                  <div className="mb-6 flex justify-between items-center">
+                    <h3 className="text-2xl font-black text-slate-800 flex items-center gap-3">
+                      <div className="p-2.5 bg-blue-100 rounded-2xl">
+                        <Bell className="text-blue-600 w-6 h-6" />
+                      </div>
+                      الإشعارات
+                    </h3>
+                    {notifications.filter(n => !n.read).length > 0 && (
+                      <span className="bg-red-500 text-white text-xs px-3 py-1.5 rounded-full font-bold shadow-md shadow-red-500/20">{notifications.filter(n => !n.read).length} جديدة</span>
+                    )}
+                  </div>
+                  {notifications.length === 0 && userData && (
+                    <span className="text-[10px] text-slate-400 font-normal mb-2 block">ID: {userData._id || userData.id}</span>
+                  )}
+                  {notifications.length === 0 ? (
+                    <div className="text-center py-10 bg-white/30 rounded-3xl border border-slate-100">
+                      <Bell className="w-8 h-8 text-slate-300 mx-auto mb-3" />
+                      <p className="text-slate-500 font-bold text-sm">لا توجد إشعارات حالياً.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
+                      {notifications.map(notif => (
+                        <div key={notif.id} className={`p-5 rounded-2xl border transition-all flex flex-col gap-2 ${notif.read ? 'bg-white/50 border-slate-100' : 'bg-blue-50 border-blue-200 shadow-md shadow-blue-500/5'}`}>
+                          <div className="flex justify-between items-start gap-4">
+                            <p className="text-slate-700 text-sm font-bold flex-1">{notif.message}</p>
+                            <button onClick={() => handleDeleteNotification(notif.id)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title="مسح الإشعار">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                          <p className="text-slate-400 text-xs mt-1 font-bold">{new Date(notif.createdAt).toLocaleString('ar-EG')}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
+
+                {/* Doctor Ratings Section FOR DOCTOR */}
+                {doctorRatings.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="glass-card bg-white/30 border-white/50 backdrop-blur-2xl rounded-[3rem] p-8 md:p-10 shadow-2xl border border-white mt-8"
+                  >
+                    <h3 className="text-2xl font-black text-slate-800 flex items-center gap-3 mb-8">
+                      <div className="p-2.5 bg-amber-100 rounded-2xl">
+                        <Star className="text-amber-500 w-6 h-6 fill-current" />
+                      </div>
+                      تقييمات المرضى
+                    </h3>
+                    <div className="space-y-4">
+                      {doctorRatings.map(rating => (
+                        <div key={rating.id} className="p-6 rounded-3xl bg-white border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
+                          <div className="flex items-center justify-between gap-2 mb-3">
+                            <div className="flex items-center gap-2">
+                              <div className="flex">
+                                {[1,2,3,4,5].map(star => (
+                                  <Star key={star} className={`w-4 h-4 ${rating.rating >= star ? 'text-amber-400 fill-current' : 'text-slate-200'}`} />
+                                ))}
+                              </div>
+                              <span className="text-[10px] text-slate-400 font-bold bg-slate-50 px-2 py-1 rounded-md">{new Date(rating.createdAt).toLocaleDateString('ar-EG')}</span>
+                            </div>
+                            <button onClick={() => handleDeleteRating(rating.id)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title="مسح التقييم">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                          {rating.comment && <p className="text-slate-700 font-bold text-sm leading-relaxed">"{rating.comment}"</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+
+
               </div>
 
             </div>
@@ -1201,9 +1641,56 @@ export default function ProfilePage() {
           </motion.div>
 
           {/* Detailed Stats & Info */}
-          <div className="relative rounded-[3.5rem] p-6 md:p-10 overflow-hidden border border-white/30 shadow-2xl bg-white/10 backdrop-blur-md">
+          <div className="relative rounded-[3.5rem] p-6 md:p-10 overflow-hidden border border-white/30 shadow-2xl bg-white/10 backdrop-blur-md mt-6">
             {/* Soft tint gradient overlay to blend nicely */}
             <div className="absolute inset-0 bg-gradient-to-tr from-cyan-50/10 via-white/5 to-blue-50/10 mix-blend-overlay pointer-events-none"></div>
+
+            {/* Notifications Panel */}
+            <div className="mb-10 relative z-10 bg-white/40 p-6 rounded-3xl border border-white shadow-sm">
+              <h3 className="text-xl font-black text-slate-800 flex items-center gap-2 mb-4">
+                <Bell className="text-primary w-6 h-6" />
+                الإشعارات
+                {notifications.filter(n => !n.read).length > 0 && (
+                  <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">{notifications.filter(n => !n.read).length} جديدة</span>
+                )}
+                {/* Debug info if no notifications but ID exists */}
+                {notifications.length === 0 && userData && (
+                   <span className="text-[10px] text-slate-400 font-normal mr-auto">ID: {userData._id || userData.id}</span>
+                )}
+              </h3>
+              {notifications.length === 0 ? (
+                <p className="text-slate-500 font-bold text-sm">لا توجد إشعارات حالياً.</p>
+              ) : (
+                <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                  {notifications.map(notif => (
+                    <div key={notif.id} className={`p-4 rounded-xl border flex flex-col gap-2 ${notif.read ? 'bg-white/50 border-slate-100' : 'bg-blue-50 border-blue-100 shadow-sm'}`}>
+                      <div className="flex justify-between items-start gap-4">
+                        <p className="text-slate-700 text-sm font-bold flex-1">{notif.message}</p>
+                        <button onClick={() => handleDeleteNotification(notif.id)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all shrink-0" title="مسح الإشعار">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between mt-1">
+                        <p className="text-slate-400 text-xs font-bold">{new Date(notif.createdAt).toLocaleString('ar-EG')}</p>
+                        {notif.recommendations && notif.recommendations.length > 0 && (
+                          <button 
+                            onClick={() => {
+                              setRecommendedDoctors(notif.recommendations);
+                              setShowRecsModal(true);
+                            }}
+                            className="px-3 py-1.5 bg-blue-600 text-white text-[10px] font-black rounded-lg hover:bg-blue-700 transition-all shadow-sm flex items-center gap-1 cursor-pointer"
+                          >
+                            <Stethoscope className="w-3 h-3" />
+                            عرض الأطباء البدلاء
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-10 relative z-10">
 
@@ -1281,6 +1768,35 @@ export default function ProfilePage() {
                   </motion.div>
                 )}
 
+                {/* Doctor Ratings Section */}
+                {userData.role?.toLowerCase() === "doctor" && doctorRatings.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="glass-card bg-white/30 border-white/50 backdrop-blur-2xl rounded-[3rem] p-10 shadow-2xl border border-white mt-8"
+                  >
+                    <h3 className="text-2xl font-black text-slate-800 flex items-center gap-3 mb-8">
+                      <div className="p-2 bg-amber-100 rounded-xl">
+                        <Star className="text-amber-500 w-6 h-6 fill-current" />
+                      </div>
+                      تقييمات المرضى
+                    </h3>
+                    <div className="space-y-4">
+                      {doctorRatings.map(rating => (
+                        <div key={rating.id} className="p-6 rounded-3xl bg-white/60 border border-white shadow-sm">
+                          <div className="flex items-center gap-2 mb-2">
+                            {[1,2,3,4,5].map(star => (
+                              <Star key={star} className={`w-4 h-4 ${rating.rating >= star ? 'text-amber-400 fill-current' : 'text-slate-300'}`} />
+                            ))}
+                            <span className="text-xs text-slate-400 mr-2">{new Date(rating.createdAt).toLocaleDateString('ar-EG')}</span>
+                          </div>
+                          {rating.comment && <p className="text-slate-700 font-bold text-sm">"{rating.comment}"</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+
                 {(userData.role?.toLowerCase() === "patient" || userData.role?.toLowerCase() === "companion") && (
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
@@ -1320,20 +1836,59 @@ export default function ProfilePage() {
                                   <p className="text-slate-400 text-sm font-bold flex items-center gap-2 mt-1">
                                     <Calendar className="w-4 h-4" /> {app.availableId?.date}
                                   </p>
+                                  {app.status === 'canceled' && (
+                                    <div className="mt-4 p-4 bg-red-50 border border-red-100 rounded-2xl">
+                                      <p className="text-red-600 text-xs font-black mb-1 flex items-center gap-2">
+                                        <Shield className="w-3 h-3" /> تم إلغاء الموعد من قبل الطبيب
+                                      </p>
+                                      {app.cancelReason && (
+                                        <p className="text-slate-600 text-xs font-bold mb-3 italic">" {app.cancelReason} "</p>
+                                      )}
+                                      <button
+                                        onClick={async () => {
+                                          const spec = app.doctorId?.specialization || "";
+                                          const response = await fetch(`/api/doctors/list?specialty=${spec}`);
+                                          const data = await response.json();
+                                          setRecommendedDoctors(data.doctors || []);
+                                          setShowRecsModal(true);
+                                        }}
+                                        className="text-blue-600 text-[10px] font-black underline hover:text-blue-800 transition-colors"
+                                      >
+                                        عرض أطباء بدلاء في نفس التخصص
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
 
-                              <div className="flex items-center">
-                                <button
-                                  type="button"
-                                  onClick={() => handleCancelAppointment(app)}
-                                  disabled={cancelLoading === (app._id || app.id)}
-                                  className="relative z-50 cursor-pointer px-6 py-3 bg-red-50 text-red-500 rounded-xl font-black text-sm hover:bg-red-500 hover:text-white transition-all shadow-sm flex items-center gap-2"
-                                >
-                                  {(cancelLoading === (app._id || app.id)) ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
-                                  إلغاء الحجز
-                                </button>
-                              </div>
+                                <div className="flex flex-col gap-2">
+                                  {app.status !== 'canceled' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCancelAppointment(app)}
+                                      disabled={cancelLoading === (app._id || app.id)}
+                                      className="relative z-50 cursor-pointer px-6 py-3 bg-red-50 text-red-500 rounded-xl font-black text-sm hover:bg-red-500 hover:text-white transition-all shadow-sm flex items-center gap-2"
+                                    >
+                                      {(cancelLoading === (app._id || app.id)) ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
+                                      إلغاء الحجز
+                                    </button>
+                                  )}
+
+                                  {/* Only show rating for completed or past appointments */}
+                                  {app.status !== 'canceled' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setRatingAppointment(app);
+                                        setShowRatingModal(true);
+                                      }}
+                                      className="relative z-50 cursor-pointer px-6 py-3 bg-amber-50 text-amber-600 rounded-xl font-black text-sm hover:bg-amber-500 hover:text-white transition-all shadow-sm flex items-center gap-2"
+                                    >
+                                      <Star className="w-4 h-4" />
+                                      تقييم الزيارة
+                                    </button>
+                                  )}
+                                </div>
                             </div>
                           </div>
                         ))}

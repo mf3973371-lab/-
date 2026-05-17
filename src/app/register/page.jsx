@@ -177,6 +177,8 @@ export default function RegisterPage() {
     experienceLevel: "",
     relationPatient: "",
     patientId: "",
+    latitude: null,
+    longitude: null,
   });
 
   const [otp, setOtp] = useState("");
@@ -212,6 +214,8 @@ export default function RegisterPage() {
       address: formData.address.trim(),
       phone: formData.phone.trim(),
       gender: formData.gender,
+      latitude: formData.latitude,
+      longitude: formData.longitude,
     };
 
     if (role === "Doctor") {
@@ -586,10 +590,35 @@ export default function RegisterPage() {
 
                     <div className="space-y-1">
                       <label className="text-sm font-bold text-slate-700">العنوان</label>
-                      <div className="relative">
-                        <MapPin className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10" />
-                        <input required name="address" value={formData.address} onChange={handleChange} className="w-full pr-12 pl-4 py-3 bg-white/50 backdrop-blur-sm border border-white rounded-xl focus:ring-4 focus:ring-primary/20 focus:outline-none font-bold text-right" placeholder="مثال: شارع 25، القاهرة" />
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <MapPin className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10" />
+                          <input required name="address" value={formData.address} onChange={handleChange} className="w-full pr-12 pl-4 py-3 bg-white/50 backdrop-blur-sm border border-white rounded-xl focus:ring-4 focus:ring-primary/20 focus:outline-none font-bold text-right" placeholder="مثال: شارع 25، القاهرة" />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (navigator.geolocation) {
+                              navigator.geolocation.getCurrentPosition((position) => {
+                                setFormData(prev => ({
+                                  ...prev,
+                                  latitude: position.coords.latitude,
+                                  longitude: position.coords.longitude
+                                }));
+                                alert("تم تحديد موقعك بنجاح! 📍");
+                              }, (error) => {
+                                alert("فشل في تحديد الموقع، يرجى تفعيل الـ GPS");
+                              });
+                            }
+                          }}
+                          className={`px-4 rounded-xl border flex items-center justify-center transition-all ${formData.latitude ? "bg-green-500 text-white border-green-500" : "bg-white text-slate-400 border-white hover:bg-slate-50"}`}
+                        >
+                          <MapPin className="w-5 h-5" />
+                        </button>
                       </div>
+                      {formData.latitude && (
+                        <p className="text-[10px] text-green-600 font-bold mr-2">✓ تم التقاط الإحداثيات: {formData.latitude.toFixed(4)}, {formData.longitude.toFixed(4)}</p>
+                      )}
                     </div>
 
                     {role === "Patient" && (

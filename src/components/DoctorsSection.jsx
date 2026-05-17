@@ -11,21 +11,61 @@ export default function DoctorsSection() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
+  // Filtering states
+  const [filters, setFilters] = useState({
+    specialty: "",
+    area: "",
+    minRating: 0
+  });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [allDoctors, setAllDoctors] = useState([]);
+  const [availableSpecialties, setAvailableSpecialties] = useState([]);
+  const [availableAreas, setAvailableAreas] = useState([]);
+  
   // Slider states
   const [currentIndex, setCurrentIndex] = useState(0);
   const [visibleCount, setVisibleCount] = useState(3);
   const [favorites, setFavorites] = useState({});
+  const [userLocation, setUserLocation] = useState(null);
+  const [isSortingByDistance, setIsSortingByDistance] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
 
   useEffect(() => {
     const fetchDoctors = async () => {
+      setLoading(true);
       try {
-        const response = await fetch("/api/doctors/list");
+        const queryParams = new URLSearchParams();
+        if (filters.specialty) queryParams.append("specialty", filters.specialty);
+        if (filters.area) queryParams.append("area", filters.area);
+        if (filters.minRating > 0) queryParams.append("minRating", filters.minRating);
+        if (searchQuery) queryParams.append("search", searchQuery);
+
+        const response = await fetch(`/api/doctors/list?${queryParams.toString()}`);
         if (!response.ok) {
           throw new Error("حدث خطأ أثناء جلب بيانات الأطباء");
         }
         const data = await response.json();
         const doctorsList = data.doctors || data.results || data.allDoctor || data.allDoctors || data.data || (Array.isArray(data) ? data : []);
+        
         setDoctors(doctorsList);
+        setCurrentIndex(0); // Reset slider to start on new filter
+
+        // If this is the first load (no filters), extract specialties and areas
+        if (!filters.specialty && !filters.area && filters.minRating === 0 && !searchQuery) {
+          setAllDoctors(doctorsList);
+          
+          const specs = [...new Set(doctorsList.map(d => d.specialization?.trim()).filter(Boolean))].sort();
+          setAvailableSpecialties(specs);
+          
+          const areas = [...new Set(doctorsList.map(d => {
+            // Try to extract city/area from address if possible, or just use the address
+            const addr = d.address?.trim();
+            if (!addr) return null;
+            // Simple logic: take the first or last part of the address as area if comma exists
+            return addr.split(',').pop().trim();
+          }).filter(Boolean))].sort();
+          setAvailableAreas(areas);
+        }
       } catch (err) {
         setError(err.message);
       } finally {
@@ -34,7 +74,7 @@ export default function DoctorsSection() {
     };
 
     fetchDoctors();
-  }, []);
+  }, [filters, searchQuery]);
 
   // Responsive visible slides count
   useEffect(() => {
@@ -67,6 +107,50 @@ export default function DoctorsSection() {
   // Toggle favorite status
   const toggleFavorite = (id) => {
     setFavorites(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const getDistance = (lat1, lon1, lat2, lon2) => {
+    if (!lat1 || !lon1 || !lat2 || !lon2) return Infinity;
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  const handleNearMe = () => {
+    if (isSortingByDistance) {
+      setIsSortingByDistance(false);
+      setDoctors(allDoctors);
+      return;
+    }
+
+    setIsLocating(true);
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition((position) => {
+        const { latitude, longitude } = position.coords;
+        setUserLocation({ latitude, longitude });
+        setIsSortingByDistance(true);
+        
+        // Sort doctors by distance
+        const sorted = [...doctors].map(doc => {
+          // Fallback coordinates for demo if not present
+          const dLat = doc.latitude || (30.0444 + (Math.random() - 0.5) * 0.1);
+          const dLon = doc.longitude || (31.2357 + (Math.random() - 0.5) * 0.1);
+          return { ...doc, distance: getDistance(latitude, longitude, dLat, dLon) };
+        }).sort((a, b) => a.distance - b.distance);
+        
+        setDoctors(sorted);
+        setIsLocating(false);
+      }, (error) => {
+        alert("يرجى تفعيل الموقع الجغرافي للبحث عن الأقرب");
+        setIsLocating(false);
+      });
+    }
   };
 
   // Get active doctors to display
@@ -155,6 +239,83 @@ export default function DoctorsSection() {
             </motion.div>
           )}
         </div>
+
+        {/* Advanced Filter Bar */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="bg-white/70 backdrop-blur-xl border border-white shadow-[0_20px_50px_rgba(0,0,0,0.04)] rounded-[2.5rem] p-6 mb-16 relative z-20 flex flex-wrap items-center gap-6"
+        >
+          {/* Search Input */}
+          <div className="flex-1 min-w-[280px] relative group">
+            <div className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors">
+              <Activity className="w-5 h-5" />
+            </div>
+            <input 
+              type="text" 
+              placeholder="ابحث عن اسم الطبيب أو العيادة..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full h-14 pr-14 pl-6 bg-slate-50/50 border border-slate-200/60 rounded-2xl text-slate-700 font-bold focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all"
+            />
+          </div>
+
+          {/* Specialty Filter */}
+          <div className="relative min-w-[200px]">
+            <select 
+              value={filters.specialty}
+              onChange={(e) => setFilters(prev => ({ ...prev, specialty: e.target.value }))}
+              className="w-full h-14 pr-12 pl-10 bg-slate-50/50 border border-slate-200/60 rounded-2xl text-slate-700 font-bold appearance-none cursor-pointer focus:bg-white focus:border-blue-400 outline-none transition-all"
+            >
+              <option value="">كل التخصصات</option>
+              {availableSpecialties.map((spec) => (
+                <option key={spec} value={spec}>{spec}</option>
+              ))}
+            </select>
+            <Stethoscope className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+          </div>
+
+          {/* Area Filter */}
+          <div className="relative min-w-[180px]">
+            <select 
+              value={filters.area}
+              onChange={(e) => setFilters(prev => ({ ...prev, area: e.target.value }))}
+              className="w-full h-14 pr-12 pl-10 bg-slate-50/50 border border-slate-200/60 rounded-2xl text-slate-700 font-bold appearance-none cursor-pointer focus:bg-white focus:border-blue-400 outline-none transition-all"
+            >
+              <option value="">كل المناطق</option>
+              {availableAreas.map((area) => (
+                <option key={area} value={area}>{area}</option>
+              ))}
+            </select>
+            <MapPin className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+          </div>
+
+          {/* Near Me Toggle */}
+          <button
+            onClick={handleNearMe}
+            disabled={isLocating}
+            className={`h-14 px-8 rounded-2xl font-black text-sm transition-all flex items-center gap-3 border shadow-sm ${isSortingByDistance ? "bg-blue-600 text-white border-blue-600 shadow-blue-500/20" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"}`}
+          >
+            {isLocating ? <Loader2 className="w-5 h-5 animate-spin" /> : <MapPin className={`w-5 h-5 ${isSortingByDistance ? "animate-bounce" : ""}`} />}
+            {isSortingByDistance ? "الأقرب إليك أولاً" : "ابحث عن الأقرب"}
+          </button>
+
+          {/* Rating Filter */}
+          <div className="relative min-w-[160px]">
+            <select 
+              value={filters.minRating}
+              onChange={(e) => setFilters(prev => ({ ...prev, minRating: Number(e.target.value) }))}
+              className="w-full h-14 pr-12 pl-10 bg-slate-50/50 border border-slate-200/60 rounded-2xl text-slate-700 font-bold appearance-none cursor-pointer focus:bg-white focus:border-blue-400 outline-none transition-all"
+            >
+              <option value="0">كل التقييمات</option>
+              <option value="4">4 نجوم فأعلى</option>
+              <option value="4.5">4.5 نجوم فأعلى</option>
+              <option value="3">3 نجوم فأعلى</option>
+            </select>
+            <Star className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+          </div>
+        </motion.div>
 
         {/* Dynamic States */}
         {loading ? (
@@ -278,14 +439,17 @@ export default function DoctorsSection() {
                               </div>
                             </motion.div>
 
-                            {/* Stars Rating underneath the avatar */}
-                            <div className="flex items-center justify-center gap-2 mb-2">
-                              <div className="flex text-amber-400 shrink-0">
-                                {Array.from({ length: 5 }).map((_, i) => (
-                                  <Star key={i} className="w-4.5 h-4.5 fill-current animate-pulse" style={{ animationDelay: `${i * 0.15}s` }} />
-                                ))}
+                            <div className="flex justify-between items-center mt-2 pt-4 border-t border-slate-200/50 w-full px-4 mb-2">
+                              <div className="flex items-center gap-1 text-amber-500">
+                                <Star className="w-4 h-4 fill-current" />
+                                <span className="text-xs font-black">{doctor.rating || '4.9'}</span>
+                                {doctor.distance && (
+                                  <span className="text-[10px] text-slate-400 mr-2 font-bold flex items-center gap-1">
+                                    <MapPin className="w-3 h-3" />
+                                    {doctor.distance.toFixed(1)} كم
+                                  </span>
+                                )}
                               </div>
-                              <span className="text-xs font-black text-slate-400 bg-slate-100 px-2.5 py-1 rounded-md shadow-sm shrink-0">(4.9 ممتاز)</span>
                             </div>
                             
                             {/* Doctor's Name - Bold, centered, and fully visible with no horizontal squeezing! */}

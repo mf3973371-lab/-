@@ -4,6 +4,14 @@ export async function POST(request) {
   try {
     const body = await request.json();
     
+    // Ensure coordinates are included if present
+    const payload = {
+      ...body,
+      // The backend might expect specific names, but we pass what we have
+      latitude: body.latitude,
+      longitude: body.longitude
+    };
+
     // الاتصال بالسيرفر الأصلي من جهة السيرفر (Server-side) لتجنب CORS
     const response = await fetch('https://shefaa-app.onrender.com/user/signUp', {
       method: 'POST',
@@ -11,7 +19,7 @@ export async function POST(request) {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
     });
 
     const data = await response.json();
