@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { MapPin, DollarSign, Loader2, Stethoscope, Phone, ChevronLeft, ChevronRight, Star, ShieldCheck, Heart, CheckCircle2, HeartPulse, Activity } from "lucide-react";
 import Link from "next/link";
 import FloatingAccent from "./FloatingAccent";
+import { db } from "@/lib/firebase";
+import { collection, getDocs } from "firebase/firestore";
 
 export default function DoctorsSection() {
   const [doctors, setDoctors] = useState([]);
@@ -122,7 +124,7 @@ export default function DoctorsSection() {
     return R * c;
   };
 
-  const handleNearMe = () => {
+  const handleNearMe = async () => {
     if (isSortingByDistance) {
       setIsSortingByDistance(false);
       setDoctors(allDoctors);
@@ -131,25 +133,46 @@ export default function DoctorsSection() {
 
     setIsLocating(true);
     if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((position) => {
+      navigator.geolocation.getCurrentPosition(async (position) => {
         const { latitude, longitude } = position.coords;
         setUserLocation({ latitude, longitude });
         setIsSortingByDistance(true);
         
-        // Sort doctors by distance
-        const sorted = [...doctors].map(doc => {
-          // Fallback coordinates for demo if not present
-          const dLat = doc.latitude || (30.0444 + (Math.random() - 0.5) * 0.1);
-          const dLon = doc.longitude || (31.2357 + (Math.random() - 0.5) * 0.1);
-          return { ...doc, distance: getDistance(latitude, longitude, dLat, dLon) };
-        }).sort((a, b) => a.distance - b.distance);
-        
-        setDoctors(sorted);
-        setIsLocating(false);
+        try {
+          // جلب مواقع الأطباء الحقيقية من Firebase
+          const locationsSnapshot = await getDocs(collection(db, "userLocations"));
+          const locationMap = {};
+          locationsSnapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.email) {
+              locationMap[data.email] = { lat: data.latitude, lon: data.longitude };
+            }
+          });
+
+          // ترتيب الأطباء بناءً على المسافة الحقيقية
+          const sorted = [...doctors].map(doc => {
+            const docLocation = locationMap[doc.email];
+            const dLat = docLocation ? docLocation.lat : null;
+            const dLon = docLocation ? docLocation.lon : null;
+            
+            const dist = (dLat && dLon) ? getDistance(latitude, longitude, dLat, dLon) : Infinity;
+            return { ...doc, distance: dist };
+          }).sort((a, b) => a.distance - b.distance);
+          
+          setDoctors(sorted);
+        } catch (error) {
+          console.error("Error fetching Firebase locations:", error);
+          alert("حدث خطأ أثناء الاتصال بخدمة المواقع");
+        } finally {
+          setIsLocating(false);
+        }
       }, (error) => {
-        alert("يرجى تفعيل الموقع الجغرافي للبحث عن الأقرب");
         setIsLocating(false);
+        alert("يرجى تفعيل الـ GPS (الموقع الجغرافي) في المتصفح الخاص بك أولاً");
       });
+    } else {
+      setIsLocating(false);
+      alert("المتصفح الخاص بك لا يدعم هذه الخاصية");
     }
   };
 

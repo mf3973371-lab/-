@@ -31,7 +31,7 @@ import UpdatePasswordModal from "@/components/UpdatePasswordModal";
 import EditPatientModal from "@/components/EditPatientModal";
 import { db } from "@/lib/firebase";
 import { collection, addDoc, query, where, getDocs, orderBy, onSnapshot, deleteDoc, doc } from "firebase/firestore";
-import { Bell, Trash2 } from "lucide-react";
+import { Bell, Trash2, MessageCircle } from "lucide-react";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -991,6 +991,13 @@ export default function ProfilePage() {
                   </button>
                   <div className="flex gap-2">
                     <Link
+                      href="/chat"
+                      className="px-5 py-4 bg-white/10 hover:bg-white/20 border border-white/10 rounded-2xl text-white text-xs font-bold transition-all flex items-center gap-2"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      المحادثات
+                    </Link>
+                    <Link
                       href="/"
                       className="px-5 py-4 bg-white/10 hover:bg-white/20 border border-white/10 rounded-2xl text-white text-xs font-bold transition-all flex items-center gap-2"
                     >
@@ -1597,6 +1604,13 @@ export default function ProfilePage() {
 
                 <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 pt-4 border-t border-white/10">
                   <div className="flex gap-2">
+                    <Link
+                      href="/chat"
+                      className="px-5 py-4 bg-white/10 hover:bg-white/20 border border-white/10 rounded-2xl text-white text-xs font-bold transition-all flex items-center gap-2"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      المحادثات
+                    </Link>
                     <Link
                       href="/"
                       className="px-5 py-4 bg-white/10 hover:bg-white/20 border border-white/10 rounded-2xl text-white text-xs font-bold transition-all flex items-center gap-2"

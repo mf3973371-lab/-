@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { db } from "@/lib/firebase";
+import { collection, query, where, getDocs, addDoc } from "firebase/firestore";
 
 export default function DoctorDetailsPage() {
   const { id } = useParams();
@@ -31,6 +33,7 @@ export default function DoctorDetailsPage() {
   const [availLoading, setAvailLoading] = useState(false);
   const [bookingLoading, setBookingLoading] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState(null);
+  const [chatLoading, setChatLoading] = useState(false);
 
   useEffect(() => {
     const fetchDoctor = async () => {
@@ -122,6 +125,81 @@ export default function DoctorDetailsPage() {
       alert("خطأ في الاتصال بالسيرفر");
     } finally {
       setBookingLoading(false);
+    }
+  };
+
+  const handleStartChat = async () => {
+    const token = localStorage.getItem("token");
+    const role = localStorage.getItem("role") || "patient";
+    
+    if (!token) {
+      alert("يجب تسجيل الدخول أولاً للتواصل مع الطبيب");
+      router.push("/login");
+      return;
+    }
+
+    if (role.toLowerCase() === "doctor") {
+      alert("الأطباء لا يمكنهم بدء محادثة مع أطباء آخرين بهذه الطريقة.");
+      return;
+    }
+
+    setChatLoading(true);
+    try {
+      // First, get the current user details to get their ID.
+      // We can fetch from /api/user/profile
+      const profileRes = await fetch("/api/user/profile", {
+        headers: { "authorization": `${role.toLowerCase()} ${token}` }
+      });
+      const profileData = await profileRes.json();
+      const currentUser = profileData.user;
+
+      if (!currentUser) {
+        alert("فشل في جلب بيانات المستخدم");
+        setChatLoading(false);
+        return;
+      }
+
+      const currentUserId = currentUser._id || currentUser.id;
+      const doctorId = doctor._id || doctor.id;
+
+      // Check if chat already exists
+      const chatsRef = collection(db, "chats");
+      const q = query(chatsRef, where("participants", "array-contains", currentUserId));
+      const querySnapshot = await getDocs(q);
+      
+      let existingChatId = null;
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.participants.includes(doctorId)) {
+          existingChatId = doc.id;
+        }
+      });
+
+      if (existingChatId) {
+        router.push(`/chat?chatId=${existingChatId}`);
+      } else {
+        // Create new chat
+        const newChatRef = await addDoc(collection(db, "chats"), {
+          participants: [currentUserId, doctorId],
+          patientId: currentUserId,
+          patientName: `${currentUser.fName} ${currentUser.lName}`,
+          doctorId: doctorId,
+          doctorName: doctor.userName || `${doctor.fName} ${doctor.lName}`,
+          doctorAvatar: isFemale ? "/doctorgirl.png" : "/doctorman.png",
+          patientAvatar: currentUser.gender === 'female' ? "/person2.png" : "/person1.png",
+          lastMessage: "تم بدء المحادثة...",
+          lastMessageTime: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+        
+        router.push(`/chat?chatId=${newChatRef.id}`);
+      }
+
+    } catch (err) {
+      console.error("Error starting chat:", err);
+      alert("حدث خطأ أثناء فتح المحادثة");
+    } finally {
+      setChatLoading(false);
     }
   };
 
@@ -332,8 +410,12 @@ export default function DoctorDetailsPage() {
                 تأكيد الحجز الآن
               </button>
               
-              <button className="w-full mt-4 py-4 bg-white/10 hover:bg-white/20 text-white font-bold rounded-2xl transition-all flex items-center justify-center gap-3 border border-white/10">
-                <MessageCircle className="w-5 h-5" />
+              <button 
+                onClick={handleStartChat}
+                disabled={chatLoading}
+                className="w-full mt-4 py-4 bg-white/10 hover:bg-white/20 text-white font-bold rounded-2xl transition-all flex items-center justify-center gap-3 border border-white/10 disabled:opacity-50"
+              >
+                {chatLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <MessageCircle className="w-5 h-5" />}
                 تواصل مع الطبيب
               </button>
             </motion.div>
