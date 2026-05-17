@@ -23,6 +23,8 @@ import { useRouter } from "next/navigation";
 import RoleSelectionModal from "@/components/RoleSelectionModal";
 import CompleteProfileModal from "@/components/CompleteProfileModal";
 import { GoogleLogin } from "@react-oauth/google";
+import { db } from "@/lib/firebase";
+import { doc, setDoc } from "firebase/firestore";
 
 const specializations = [
   "الباطنة العامة", "أمراض القلب", "أمراض الصدر", "الجراحة العامة",
@@ -214,8 +216,6 @@ export default function RegisterPage() {
       address: formData.address.trim(),
       phone: formData.phone.trim(),
       gender: formData.gender,
-      latitude: formData.latitude,
-      longitude: formData.longitude,
     };
 
     if (role === "Doctor") {
@@ -296,6 +296,26 @@ export default function RegisterPage() {
 
       const data = await response.json();
       if (response.ok) {
+        
+        // --- FIREBASE LOCATION SAVE LOGIC ---
+        if (formData.latitude && formData.longitude) {
+          try {
+            await setDoc(doc(db, "userLocations", formData.email), {
+              email: formData.email,
+              role: role,
+              latitude: formData.latitude,
+              longitude: formData.longitude,
+              fName: formData.fName,
+              lName: formData.lName,
+              updatedAt: new Date().toISOString()
+            });
+            console.log("تم حفظ الموقع الجغرافي بنجاح في Firebase!");
+          } catch (fbErr) {
+            console.error("فشل حفظ الموقع في Firebase:", fbErr);
+          }
+        }
+        // -------------------------------------
+
         setSuccessData(data);
         setStep(4); // Success
       } else {
