@@ -619,13 +619,31 @@ export default function RegisterPage() {
                           type="button"
                           onClick={() => {
                             if (navigator.geolocation) {
-                              navigator.geolocation.getCurrentPosition((position) => {
+                              navigator.geolocation.getCurrentPosition(async (position) => {
+                                const lat = position.coords.latitude;
+                                const lon = position.coords.longitude;
+                                
                                 setFormData(prev => ({
                                   ...prev,
-                                  latitude: position.coords.latitude,
-                                  longitude: position.coords.longitude
+                                  latitude: lat,
+                                  longitude: lon
                                 }));
-                                alert("تم تحديد موقعك بنجاح! 📍");
+
+                                try {
+                                  // Reverse Geocoding via OpenStreetMap
+                                  const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&accept-language=ar`);
+                                  const data = await res.json();
+                                  if (data && data.display_name) {
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      address: data.display_name
+                                    }));
+                                  }
+                                } catch (e) {
+                                  console.error("Reverse Geocoding Error:", e);
+                                }
+
+                                alert("تم التقاط موقعك بنجاح! 📍 وتم تحديث العنوان النصي تلقائياً.");
                               }, (error) => {
                                 alert("فشل في تحديد الموقع، يرجى تفعيل الـ GPS");
                               });
