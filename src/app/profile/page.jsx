@@ -1186,9 +1186,14 @@ export default function ProfilePage() {
                           <LogOut className="w-4 h-4 rotate-180" />
                         </button>
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <SearchStat label="العمر" value={searchResult.age} />
-                        <SearchStat label="فصيلة الدم" value={searchResult.blood} />
+                      <div className="flex flex-col gap-3 mt-4">
+                        <InfoItem icon={<User className="w-5 h-5" />} label="العمر" value={searchResult.age || "غير محدد"} />
+                        <InfoItem icon={<Droplet className="w-5 h-5" />} label="فصيلة الدم" value={searchResult.blood || "غير محدد"} />
+                        <InfoItem icon={<Stethoscope className="w-5 h-5" />} label="الحالة" value={searchResult.disease || "غير محدد"} />
+                        <InfoItem icon={<Phone className="w-5 h-5" />} label="الهاتف" value={searchResult.phone || "غير محدد"} />
+                        <InfoItem icon={<Mail className="w-5 h-5" />} label="البريد الإلكتروني" value={searchResult.email || "غير محدد"} />
+                        <InfoItem icon={<User className="w-5 h-5" />} label="النوع" value={searchResult.gender || "غير محدد"} />
+                        <InfoItem icon={<MapPin className="w-5 h-5" />} label="العنوان" value={searchResult.address || "غير محدد"} />
                       </div>
                       <button
                         onClick={() => setEditingPatient(searchResult)}
@@ -1771,11 +1776,14 @@ export default function ProfilePage() {
                             </button>
                           </div>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                          <SearchStat label="العمر" value={searchResult.age} />
-                          <SearchStat label="فصيلة الدم" value={searchResult.blood} />
-                          <SearchStat label="الحالة" value={searchResult.disease} />
-                          <SearchStat label="الهاتف" value={searchResult.phone} />
+                        <div className="flex flex-col gap-3 mt-4">
+                          <InfoItem icon={<User className="w-5 h-5" />} label="العمر" value={searchResult.age || "غير محدد"} />
+                          <InfoItem icon={<Droplet className="w-5 h-5" />} label="فصيلة الدم" value={searchResult.blood || "غير محدد"} />
+                          <InfoItem icon={<Stethoscope className="w-5 h-5" />} label="الحالة" value={searchResult.disease || "غير محدد"} />
+                          <InfoItem icon={<Phone className="w-5 h-5" />} label="الهاتف" value={searchResult.phone || "غير محدد"} />
+                          <InfoItem icon={<Mail className="w-5 h-5" />} label="البريد الإلكتروني" value={searchResult.email || "غير محدد"} />
+                          <InfoItem icon={<User className="w-5 h-5" />} label="النوع" value={searchResult.gender || "غير محدد"} />
+                          <InfoItem icon={<MapPin className="w-5 h-5" />} label="العنوان" value={searchResult.address || "غير محدد"} />
                         </div>
                       </motion.div>
                     )}
@@ -2388,10 +2396,10 @@ function SearchStat({ label, value }) {
   return (
     <motion.div
       whileHover={{ scale: 1.05 }}
-      className="text-center p-4 bg-white/30 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm hover:border-green-300 transition-all duration-300"
+      className="text-center p-3 md:p-4 bg-white/30 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm hover:border-green-300 transition-all duration-300 flex flex-col justify-center overflow-hidden"
     >
       <p className="text-[10px] text-slate-400 font-extrabold mb-1 uppercase tracking-widest">{label}</p>
-      <p className="text-slate-800 font-black text-base">{value || "---"}</p>
+      <p className="text-slate-800 font-black text-sm break-all" title={value}>{value || "---"}</p>
     </motion.div>
   );
 }
@@ -2400,14 +2408,14 @@ function InfoItem({ icon, label, value, color = "text-slate-800" }) {
   return (
     <motion.div
       whileHover={{ y: -3, scale: 1.02 }}
-      className="flex items-start gap-4 p-5 rounded-2xl bg-white/40 backdrop-blur-md border border-white/50 hover:border-primary/30 hover:bg-white/60 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300"
+      className="flex items-center gap-4 p-4 md:p-5 rounded-2xl bg-white/40 backdrop-blur-md border border-white/50 hover:border-primary/30 hover:bg-white/60 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 w-full"
     >
-      <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center text-primary shadow-inner">
+      <div className="shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center text-primary shadow-inner">
         {icon}
       </div>
-      <div>
+      <div className="flex-1 min-w-0">
         <p className="text-[11px] text-slate-400 font-extrabold mb-1 tracking-wider uppercase">{label}</p>
-        <p className={`font-black text-sm md:text-base ${color}`}>{value || "---"}</p>
+        <p className={`font-black text-sm md:text-base ${color} break-words`} title={value}>{value || "---"}</p>
       </div>
     </motion.div>
   );
