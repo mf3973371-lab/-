@@ -115,6 +115,45 @@ export default function ProfilePage() {
   const [myAppointments, setMyAppointments] = useState([]);
   const [myAppLoading, setMyAppLoading] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(null);
+  const [completeLoading, setCompleteLoading] = useState(null);
+  const [mergedPatients, setMergedPatients] = useState([]);
+
+  useEffect(() => {
+    const map = new Map();
+    
+    // Add patients from the backend API
+    patients.forEach(p => {
+      if (p && (p._id || p.id)) map.set(p._id || p.id, p);
+    });
+
+    // Add patients from appointments
+    myAppointments.forEach(app => {
+      if (app.patientId && (app.patientId._id || app.patientId.id)) {
+        const p = { ...app.patientId };
+        if (!p.fName && p.userName) {
+            const parts = p.userName.split(' ');
+            p.fName = parts[0] || '';
+            p.lName = parts.slice(1).join(' ') || '';
+        }
+        if (!map.has(p._id || p.id)) {
+          map.set(p._id || p.id, p);
+        }
+      }
+      if (app.companionId && (app.companionId._id || app.companionId.id)) {
+        const c = { ...app.companionId };
+        if (!c.fName && c.userName) {
+            const parts = c.userName.split(' ');
+            c.fName = parts[0] || '';
+            c.lName = parts.slice(1).join(' ') || '';
+        }
+        if (!map.has(c._id || c.id)) {
+          map.set(c._id || c.id, c);
+        }
+      }
+    });
+
+    setMergedPatients(Array.from(map.values()));
+  }, [patients, myAppointments]);
 
   useEffect(() => {
     fetchProfile();
@@ -187,6 +226,86 @@ export default function ProfilePage() {
       setMyAppointments([]);
     } finally {
       setMyAppLoading(false);
+    }
+  };
+
+  const handleCompleteAppointment = async (appointment) => {
+    if (!appointment) return;
+    const appointmentId = appointment._id || appointment.id || appointment.appointmentId || appointment.bookingId || appointment.reservationId || (appointment.availableId && typeof appointment.availableId === 'string' ? appointment.availableId : null);
+    
+    if (!appointmentId) return;
+
+    if (!confirm("هل أنت متأكد من إتمام هذا الكشف؟ سيتم مسحه من قائمة الحجوزات وإرسال رسالة شكر للمريض.")) return;
+
+    setCompleteLoading(appointmentId);
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const role = typeof window !== "undefined" ? (localStorage.getItem("role") || "doctor") : "doctor";
+    
+    try {
+      // 1. Remove from server (using cancel API as a workaround to complete it)
+      const response = await fetch(`/api/appointment/cancel/${appointmentId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "authorization": `${role.toLowerCase()} ${token}`
+        },
+        body: JSON.stringify({
+          reason: "تم الكشف بنجاح",
+          role: role,
+          specialization: "",
+          doctorId: ""
+        })
+      });
+      
+      const data = await response.json();
+
+      if (response.ok || data.message === "Done" || data.message?.includes("Done")) {
+        
+        // 2. Email Notification
+        const targetEmail = appointment.patientId?.email || appointment.userId?.email || appointment.email || appointment.companionId?.email;
+        if (targetEmail) {
+          const patientName = appointment.patientId?.fName || appointment.patientId?.userName || appointment.companionId?.fName || "عزيزي المريض";
+          const emailMessage = `مرحباً ${patientName}،\n\nنشكرك على زيارتك واستخدام موقع شفاء.\nنتمنى لك الشفاء العاجل، وأن يحفظك الله ويبارك في عمرك.\n\nمع تحيات طبيبك المعالج وإدارة منصة شفاء.`;
+
+          await fetch('/api/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: targetEmail,
+              subject: 'تم الكشف بنجاح - منصة شفاء',
+              message: emailMessage
+            })
+          });
+        }
+
+        // 3. Firebase Notification
+        try {
+          const targetUserId = appointment.patientId?._id || appointment.patientId || appointment.userId?._id || appointment.userId || appointment.companionId?._id || "unknown_patient";
+          const senderName = userData?.fName ? `${userData.fName} ${userData.lName}` : "الطبيب";
+          
+          await addDoc(collection(db, 'notifications'), {
+            targetId: targetUserId,
+            senderId: userData?._id || userData?.id || "unknown",
+            senderRole: role,
+            message: `تم الكشف بنجاح. د. ${senderName} يتمنى لك الشفاء العاجل وأن يحفظك الله!`,
+            appointmentId: appointmentId,
+            createdAt: new Date().toISOString(),
+            read: false,
+          });
+        } catch (e) {
+          console.error("Firebase notif error", e);
+        }
+
+        alert("تم إتمام الكشف بنجاح وإرسال رسالة شكر للمريض!");
+        fetchMyAppointments();
+      } else {
+        alert(data.message || "فشل إتمام الكشف");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("خطأ في الاتصال بالسيرفر");
+    } finally {
+      setCompleteLoading(null);
     }
   };
 
@@ -1069,7 +1188,7 @@ export default function ProfilePage() {
                   </h3>
                   <div className="w-16 h-1 bg-gradient-to-r from-cyan-400 to-transparent rounded-full mb-6 relative z-10"></div>
                   <div className="space-y-4 relative z-10">
-                    <StatRow label="المرضى المتابعين" value={patients.length.toString()} />
+                    <StatRow label="المرضى المتابعين" value={mergedPatients.length.toString()} />
                     <StatRow label="الحجوزات المؤكدة" value={myAppointments.length.toString()} />
                     <StatRow label="قيمة الكشف" value={`${userData.price || "0"} ج.م`} />
                   </div>
@@ -1368,17 +1487,26 @@ export default function ProfilePage() {
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-3 flex-wrap lg:flex-nowrap">
+                            <div className="flex flex-wrap items-center gap-3 mt-2 lg:mt-0 lg:mr-auto">
                               <Badge label="العمر" value={app.patientId?.age || app.companionId?.age || "--"} color="bg-blue-100 text-blue-700" />
                               <Badge label="الحالة" value={app.patientId?.disease || app.companionId?.disease || "متابعة"} color="bg-emerald-100 text-emerald-700" />
                               
                               <button
                                 type="button"
+                                onClick={() => handleCompleteAppointment(app)}
+                                disabled={completeLoading === (app._id || app.id)}
+                                className="px-5 py-2 bg-emerald-50 text-emerald-600 rounded-xl font-bold text-xs hover:bg-emerald-600 hover:text-white transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap border border-emerald-100"
+                              >
+                                {(completeLoading === (app._id || app.id)) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />}
+                                تم الكشف
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => handleCancelAppointment(app)}
                                 disabled={cancelLoading === (app._id || app.id)}
-                                className="mr-auto lg:mr-4 px-4 py-2 bg-red-50 text-red-500 rounded-xl font-bold text-xs hover:bg-red-600 hover:text-white transition-all shadow-sm flex items-center gap-1.5 cursor-pointer z-50 relative"
+                                className="px-5 py-2 bg-red-50 text-red-500 rounded-xl font-bold text-xs hover:bg-red-600 hover:text-white transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap border border-red-100"
                               >
-                                {(cancelLoading === (app._id || app.id)) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogOut className="w-3.5 h-3.5" />}
+                                {(cancelLoading === (app._id || app.id)) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogOut className="w-3.5 h-3.5 shrink-0" />}
                                 إلغاء
                               </button>
                             </div>
@@ -1412,7 +1540,7 @@ export default function ProfilePage() {
                       <div className="w-20 h-1 bg-gradient-to-r from-purple-500 to-transparent rounded-full mt-3"></div>
                     </div>
                     <span className="bg-purple-100 text-purple-700 px-4 py-1.5 rounded-2xl text-xs font-black">
-                      {patients.length} حالة مسجلة
+                      {mergedPatients.length} حالة مسجلة
                     </span>
                   </div>
 
@@ -1420,9 +1548,9 @@ export default function ProfilePage() {
                     <div className="flex justify-center py-12">
                       <Loader2 className="w-10 h-10 text-primary animate-spin" />
                     </div>
-                  ) : patients.length > 0 ? (
+                  ) : mergedPatients.length > 0 ? (
                     <div className="space-y-4">
-                      {patients.map((patient) => (
+                      {mergedPatients.map((patient) => (
                         <motion.div
                           whileHover={{ y: -2 }}
                           key={patient._id}
@@ -1987,15 +2115,26 @@ export default function ProfilePage() {
                                     {app.patientId ? "مريض" : "مرافق"}
                                   </span>
                                 </div>
-                                <button
-                                  type="button"
-                                  onClick={() => handleCancelAppointment(app)}
-                                  disabled={cancelLoading === (app._id || app.id)}
-                                  className="px-4 py-2 bg-red-50 text-red-500 rounded-xl font-bold text-xs hover:bg-red-600 hover:text-white transition-all shadow-sm flex items-center gap-1.5 cursor-pointer z-50 relative"
-                                >
-                                  {(cancelLoading === (app._id || app.id)) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogOut className="w-3.5 h-3.5" />}
-                                  إلغاء الموعد
-                                </button>
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCompleteAppointment(app)}
+                                    disabled={completeLoading === (app._id || app.id)}
+                                    className="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl font-bold text-xs hover:bg-emerald-600 hover:text-white transition-all shadow-sm flex items-center gap-1.5 cursor-pointer z-50 relative"
+                                  >
+                                    {(completeLoading === (app._id || app.id)) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                                    تم الكشف بنجاح
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCancelAppointment(app)}
+                                    disabled={cancelLoading === (app._id || app.id)}
+                                    className="px-4 py-2 bg-red-50 text-red-500 rounded-xl font-bold text-xs hover:bg-red-600 hover:text-white transition-all shadow-sm flex items-center gap-1.5 cursor-pointer z-50 relative"
+                                  >
+                                    {(cancelLoading === (app._id || app.id)) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogOut className="w-3.5 h-3.5" />}
+                                    إلغاء الموعد
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -2267,7 +2406,7 @@ export default function ProfilePage() {
                         سجل المرضى المتابعين
                       </h3>
                       <span className="bg-purple-100 text-purple-700 px-5 py-2 rounded-2xl text-sm font-black shadow-sm">
-                        {patients.length} حالة مسجلة
+                        {mergedPatients.length} حالة مسجلة
                       </span>
                     </div>
 
@@ -2275,9 +2414,9 @@ export default function ProfilePage() {
                       <div className="flex justify-center py-20">
                         <Loader2 className="w-12 h-12 text-primary animate-spin" />
                       </div>
-                    ) : patients.length > 0 ? (
+                    ) : mergedPatients.length > 0 ? (
                       <div className="space-y-6">
-                        {patients.map((patient) => (
+                        {mergedPatients.map((patient) => (
                           <motion.div
                             whileHover={{ y: -4, scale: 1.01 }}
                             key={patient._id}
@@ -2360,7 +2499,7 @@ export default function ProfilePage() {
                     <div className="space-y-6">
                       <StatRow label="عدد المراجعات" value="0" />
                       <StatRow label="المواعيد القادمة" value={userData.role?.toLowerCase() === "doctor" ? "0" : myAppointments.length.toString()} />
-                      <StatRow label="المرضى المسجلين" value={patients.length.toString()} />
+                      <StatRow label="المرضى المسجلين" value={mergedPatients.length.toString()} />
                     </div>
                   </motion.div>
                 )}

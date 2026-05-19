@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MapPin, DollarSign, Loader2, Stethoscope, Phone, ChevronLeft, ChevronRight, Star, ShieldCheck, Heart, CheckCircle2, HeartPulse, Activity } from "lucide-react";
 import Link from "next/link";
@@ -8,8 +8,20 @@ import FloatingAccent from "./FloatingAccent";
 import { db } from "@/lib/firebase";
 import { collection, getDocs } from "firebase/firestore";
 
+const getDistance = (lat1, lon1, lat2, lon2) => {
+  if (!lat1 || !lon1 || !lat2 || !lon2) return Infinity;
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+};
 export default function DoctorsSection() {
-  const [doctors, setDoctors] = useState([]);
+  const [rawDoctors, setRawDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
@@ -31,6 +43,7 @@ export default function DoctorsSection() {
   const [userLocation, setUserLocation] = useState(null);
   const [isSortingByDistance, setIsSortingByDistance] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
+  const [locationsMap, setLocationsMap] = useState({});
 
   useEffect(() => {
     const fetchDoctors = async () => {
@@ -49,7 +62,7 @@ export default function DoctorsSection() {
         const data = await response.json();
         const doctorsList = data.doctors || data.results || data.allDoctor || data.allDoctors || data.data || (Array.isArray(data) ? data : []);
         
-        setDoctors(doctorsList);
+        setRawDoctors(doctorsList);
         setCurrentIndex(0); // Reset slider to start on new filter
 
         // If this is the first load (no filters), extract specialties and areas
@@ -95,7 +108,30 @@ export default function DoctorsSection() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const totalDoctors = doctors.length;
+  const processedDoctors = useMemo(() => {
+    let list = [...rawDoctors];
+    
+    if (isSortingByDistance && userLocation) {
+      list = list.map(doc => {
+        const docNameKey = doc.userName ? doc.userName.trim().toLowerCase() : `${doc.fName?.trim().toLowerCase()} ${doc.lName?.trim().toLowerCase()}`;
+        const docLocation = 
+          locationsMap[doc.email?.toLowerCase()] || 
+          locationsMap[doc._id] || 
+          locationsMap[doc.id] ||
+          locationsMap[docNameKey];
+
+        const dLat = docLocation ? docLocation.lat : null;
+        const dLon = docLocation ? docLocation.lon : null;
+        
+        const dist = (dLat && dLon) ? getDistance(userLocation.latitude, userLocation.longitude, dLat, dLon) : Infinity;
+        return { ...doc, distance: dist };
+      }).sort((a, b) => a.distance - b.distance);
+    }
+    
+    return list;
+  }, [rawDoctors, isSortingByDistance, userLocation, locationsMap]);
+
+  const totalDoctors = processedDoctors.length;
   const maxIndex = Math.max(0, totalDoctors - visibleCount);
 
   const handleNext = () => {
@@ -111,23 +147,9 @@ export default function DoctorsSection() {
     setFavorites(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const getDistance = (lat1, lon1, lat2, lon2) => {
-    if (!lat1 || !lon1 || !lat2 || !lon2) return Infinity;
-    const R = 6371;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-  };
-
   const handleNearMe = async () => {
     if (isSortingByDistance) {
       setIsSortingByDistance(false);
-      setDoctors(allDoctors);
       return;
     }
 
@@ -136,7 +158,6 @@ export default function DoctorsSection() {
       navigator.geolocation.getCurrentPosition(async (position) => {
         const { latitude, longitude } = position.coords;
         setUserLocation({ latitude, longitude });
-        setIsSortingByDistance(true);
         
         try {
           // جلب مواقع الأطباء الحقيقية من Firebase
@@ -144,22 +165,18 @@ export default function DoctorsSection() {
           const locationMap = {};
           locationsSnapshot.forEach(doc => {
             const data = doc.data();
-            if (data.email) {
-              locationMap[data.email] = { lat: data.latitude, lon: data.longitude };
-            }
+            const emailKey = data.email?.toLowerCase();
+            const nameKey = `${data.fName?.trim().toLowerCase()} ${data.lName?.trim().toLowerCase()}`;
+            const loc = { lat: data.latitude, lon: data.longitude };
+
+            if (emailKey) locationMap[emailKey] = loc;
+            if (data.userId) locationMap[data.userId] = loc;
+            if (nameKey) locationMap[nameKey] = loc;
+            locationMap[doc.id.toLowerCase()] = loc;
           });
 
-          // ترتيب الأطباء بناءً على المسافة الحقيقية
-          const sorted = [...doctors].map(doc => {
-            const docLocation = locationMap[doc.email];
-            const dLat = docLocation ? docLocation.lat : null;
-            const dLon = docLocation ? docLocation.lon : null;
-            
-            const dist = (dLat && dLon) ? getDistance(latitude, longitude, dLat, dLon) : Infinity;
-            return { ...doc, distance: dist };
-          }).sort((a, b) => a.distance - b.distance);
-          
-          setDoctors(sorted);
+          setLocationsMap(locationMap);
+          setIsSortingByDistance(true);
         } catch (error) {
           console.error("Error fetching Firebase locations:", error);
           alert("حدث خطأ أثناء الاتصال بخدمة المواقع");
@@ -177,12 +194,12 @@ export default function DoctorsSection() {
   };
 
   // Get active doctors to display
-  const displayedDoctors = doctors.slice(currentIndex, currentIndex + visibleCount);
+  const displayedDoctors = processedDoctors.slice(currentIndex, currentIndex + visibleCount);
 
   // If there are not enough doctors to fill the slice (looping around), pad it
   if (displayedDoctors.length < visibleCount && totalDoctors > visibleCount) {
     const paddingCount = visibleCount - displayedDoctors.length;
-    displayedDoctors.push(...doctors.slice(0, paddingCount));
+    displayedDoctors.push(...processedDoctors.slice(0, paddingCount));
   }
 
   return (

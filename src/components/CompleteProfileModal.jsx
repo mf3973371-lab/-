@@ -13,12 +13,30 @@ import {
   User,
   Users
 } from "lucide-react";
+import { db } from "@/lib/firebase";
+import { doc, setDoc } from "firebase/firestore";
 
 const specializations = [
   "الباطنة العامة", "أمراض القلب", "أمراض الصدر", "الجراحة العامة", 
   "أمراض الكلى", "الطب الطارئ", "أمراض الدم", "الأمراض الجلدية", 
   " الطب النفسي", " التخدير", " العلاج الطبيعي"
 ];
+
+const decodeToken = (token) => {
+  try {
+    if (!token) return null;
+    const base64Url = token.split('.')[1];
+    if (!base64Url) return null;
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    console.error("Failed to decode token in CompleteProfileModal:", e);
+    return null;
+  }
+};
 
 export default function CompleteProfileModal({ isOpen, onClose, token, role, onComplete }) {
   const [loading, setLoading] = useState(false);
@@ -29,6 +47,8 @@ export default function CompleteProfileModal({ isOpen, onClose, token, role, onC
     gender: "male",
     phone: "",
     address: "",
+    latitude: null,
+    longitude: null,
     specialization: "",
     price: "",
     blood: "",
@@ -92,6 +112,40 @@ export default function CompleteProfileModal({ isOpen, onClose, token, role, onC
       const data = await response.json();
 
       if (response.ok || data.message === "Done") {
+        // --- FIREBASE LOCATION SAVE LOGIC ---
+        if (formData.latitude && formData.longitude) {
+          try {
+            const decoded = decodeToken(token);
+            const userEmail = data.user?.email || data.email || decoded?.email || decoded?.user?.email || decoded?.id;
+            
+            if (userEmail) {
+              let fName = data.user?.fName || decoded?.fName || decoded?.user?.fName || "";
+              let lName = data.user?.lName || decoded?.lName || decoded?.user?.lName || "";
+              if (!fName && decoded?.name) {
+                const parts = decoded.name.split(' ');
+                fName = parts[0] || "";
+                lName = parts.slice(1).join(' ') || "";
+              }
+
+              await setDoc(doc(db, "userLocations", userEmail), {
+                email: userEmail,
+                role: role,
+                latitude: formData.latitude,
+                longitude: formData.longitude,
+                fName: fName,
+                lName: lName,
+                updatedAt: new Date().toISOString()
+              });
+              console.log("تم حفظ الموقع الجغرافي بنجاح في Firebase!");
+            } else {
+              console.warn("Could not find userEmail for location save. Decoded token:", decoded, "Data:", data);
+            }
+          } catch (fbErr) {
+            console.error("فشل حفظ الموقع في Firebase:", fbErr);
+          }
+        }
+        // -------------------------------------
+
         setSuccess(true);
         setTimeout(() => {
           onComplete(data);
@@ -173,17 +227,59 @@ export default function CompleteProfileModal({ isOpen, onClose, token, role, onC
 
                 <div className="space-y-1">
                   <label className="text-sm font-bold text-slate-700 mr-2">العنوان</label>
-                  <div className="relative">
-                    <MapPin className="absolute left-4 top-3.5 w-5 h-5 text-slate-400" />
-                    <input 
-                      required 
-                      name="address"
-                      value={formData.address}
-                      onChange={handleChange}
-                      placeholder="مثال: مدينة نصر، القاهرة"
-                      className="w-full pl-4 pr-12 py-3.5 bg-white/50 backdrop-blur-sm border border-white rounded-2xl focus:ring-4 focus:ring-primary/20 focus:outline-none transition-all font-bold" 
-                    />
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <MapPin className="absolute left-4 top-3.5 w-5 h-5 text-slate-400 z-10" />
+                      <input 
+                        required 
+                        name="address"
+                        value={formData.address}
+                        onChange={handleChange}
+                        placeholder="مثال: مدينة نصر، القاهرة"
+                        className="w-full pl-10 pr-4 py-3.5 bg-white/50 backdrop-blur-sm border border-white rounded-2xl focus:ring-4 focus:ring-primary/20 focus:outline-none transition-all font-bold" 
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (navigator.geolocation) {
+                          navigator.geolocation.getCurrentPosition(async (position) => {
+                            const lat = position.coords.latitude;
+                            const lon = position.coords.longitude;
+                            
+                            setFormData(prev => ({
+                              ...prev,
+                              latitude: lat,
+                              longitude: lon
+                            }));
+
+                            try {
+                              const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&accept-language=ar`);
+                              const geoData = await res.json();
+                              if (geoData && geoData.display_name) {
+                                setFormData(prev => ({
+                                  ...prev,
+                                  address: geoData.display_name
+                                }));
+                              }
+                            } catch (e) {
+                              console.error("Reverse Geocoding Error:", e);
+                            }
+
+                            alert("تم التقاط موقعك بنجاح! 📍 وتم تحديث العنوان النصي تلقائياً.");
+                          }, (error) => {
+                            alert("فشل في تحديد الموقع، يرجى تفعيل الـ GPS");
+                          });
+                        }
+                      }}
+                      className={`px-4 rounded-2xl border flex items-center justify-center transition-all ${formData.latitude ? "bg-green-500 text-white border-green-500" : "bg-white text-slate-400 border-white hover:bg-slate-50"}`}
+                    >
+                      <MapPin className="w-5 h-5" />
+                    </button>
                   </div>
+                  {formData.latitude && (
+                    <p className="text-[10px] text-green-600 font-bold mr-2 mt-1">✓ تم التقاط الإحداثيات: {formData.latitude.toFixed(4)}, {formData.longitude.toFixed(4)}</p>
+                  )}
                 </div>
 
                 {role === "Doctor" && (
