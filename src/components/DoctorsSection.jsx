@@ -120,12 +120,14 @@ export default function DoctorsSection() {
           locationsMap[doc.id] ||
           locationsMap[docNameKey];
 
-        const dLat = docLocation ? docLocation.lat : null;
-        const dLon = docLocation ? docLocation.lon : null;
+        const dLat = doc.latitude !== undefined && doc.latitude !== null ? doc.latitude : (docLocation ? docLocation.lat : null);
+        const dLon = doc.longitude !== undefined && doc.longitude !== null ? doc.longitude : (docLocation ? docLocation.lon : null);
         
         const dist = (dLat && dLon) ? getDistance(userLocation.latitude, userLocation.longitude, dLat, dLon) : Infinity;
         return { ...doc, distance: dist };
-      }).sort((a, b) => a.distance - b.distance);
+      })
+      .filter(doc => doc.distance !== Infinity)
+      .sort((a, b) => a.distance - b.distance);
     }
     
     return list;
@@ -158,31 +160,8 @@ export default function DoctorsSection() {
       navigator.geolocation.getCurrentPosition(async (position) => {
         const { latitude, longitude } = position.coords;
         setUserLocation({ latitude, longitude });
-        
-        try {
-          // جلب مواقع الأطباء الحقيقية من Firebase
-          const locationsSnapshot = await getDocs(collection(db, "userLocations"));
-          const locationMap = {};
-          locationsSnapshot.forEach(doc => {
-            const data = doc.data();
-            const emailKey = data.email?.toLowerCase();
-            const nameKey = `${data.fName?.trim().toLowerCase()} ${data.lName?.trim().toLowerCase()}`;
-            const loc = { lat: data.latitude, lon: data.longitude };
-
-            if (emailKey) locationMap[emailKey] = loc;
-            if (data.userId) locationMap[data.userId] = loc;
-            if (nameKey) locationMap[nameKey] = loc;
-            locationMap[doc.id.toLowerCase()] = loc;
-          });
-
-          setLocationsMap(locationMap);
-          setIsSortingByDistance(true);
-        } catch (error) {
-          console.error("Error fetching Firebase locations:", error);
-          alert("حدث خطأ أثناء الاتصال بخدمة المواقع");
-        } finally {
-          setIsLocating(false);
-        }
+        setIsSortingByDistance(true);
+        setIsLocating(false);
       }, (error) => {
         setIsLocating(false);
         alert("يرجى تفعيل الـ GPS (الموقع الجغرافي) في المتصفح الخاص بك أولاً");
@@ -481,9 +460,16 @@ export default function DoctorsSection() {
 
                             <div className="flex justify-between items-center mt-2 pt-4 border-t border-slate-200/50 w-full px-4 mb-2">
                               <div className="flex items-center gap-1 text-amber-500">
-                                <Star className="w-4 h-4 fill-current" />
-                                <span className="text-xs font-black">{doctor.rating || '4.9'}</span>
-                                {doctor.distance && (
+                                {doctor.rating ? (
+                                  <>
+                                    <Star className="w-4 h-4 fill-current" />
+                                    <span className="text-xs font-black">{Number(doctor.rating).toFixed(1)}</span>
+                                    <span className="text-[10px] text-slate-400 mr-1 font-bold">({doctor.ratingCount} تقييم)</span>
+                                  </>
+                                ) : (
+                                  <span className="text-xs font-bold text-slate-400">لا توجد تقييمات</span>
+                                )}
+                                {doctor.distance && doctor.distance !== Infinity && (
                                   <span className="text-[10px] text-slate-400 mr-2 font-bold flex items-center gap-1">
                                     <MapPin className="w-3 h-3" />
                                     {doctor.distance.toFixed(1)} كم

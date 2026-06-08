@@ -443,9 +443,10 @@ export default function ProfilePage() {
       // Write directly to Firestore from the frontend
       const ratingData = {
         appointmentId: ratingAppointment._id || ratingAppointment.id,
-        doctorId: ratingAppointment.doctorId?._id,
+        doctorId: ratingAppointment.doctorId?._id || ratingAppointment.doctorId?.id || (typeof ratingAppointment.doctorId === 'string' ? ratingAppointment.doctorId : null),
         rating: ratingValue,
         comment: ratingComment,
+        patientName: userData ? `${userData.fName} ${userData.lName}`.trim() : "مريض شفاء",
         createdAt: new Date().toISOString()
       };
 
@@ -970,8 +971,14 @@ export default function ProfilePage() {
                   </div>
                   <div className="flex justify-between items-center mt-2 pt-4 border-t border-slate-200/50">
                     <div className="flex items-center gap-1 text-amber-500">
-                      <Star className="w-4 h-4 fill-current" />
-                      <span className="text-xs font-black">4.9</span>
+                      {doc.rating ? (
+                        <>
+                          <Star className="w-4 h-4 fill-current" />
+                          <span className="text-xs font-black">{Number(doc.rating).toFixed(1)}</span>
+                        </>
+                      ) : (
+                        <span className="text-xs font-bold text-slate-400">لا توجد تقييمات</span>
+                      )}
                     </div>
                     <Link 
                       href={`/doctors/${doc._id}`}
@@ -1677,7 +1684,7 @@ export default function ProfilePage() {
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
-                          {rating.comment && <p className="text-slate-700 font-bold text-sm leading-relaxed">"{rating.comment}"</p>}
+                          {rating.comment && <p className="text-slate-700 font-bold text-sm leading-relaxed">&quot;{rating.comment}&quot;</p>}
                         </div>
                       ))}
                     </div>
@@ -1940,7 +1947,7 @@ export default function ProfilePage() {
                             ))}
                             <span className="text-xs text-slate-400 mr-2">{new Date(rating.createdAt).toLocaleDateString('ar-EG')}</span>
                           </div>
-                          {rating.comment && <p className="text-slate-700 font-bold text-sm">"{rating.comment}"</p>}
+                          {rating.comment && <p className="text-slate-700 font-bold text-sm">&quot;{rating.comment}&quot;</p>}
                         </div>
                       ))}
                     </div>
@@ -1992,7 +1999,7 @@ export default function ProfilePage() {
                                         <Shield className="w-3 h-3" /> تم إلغاء الموعد من قبل الطبيب
                                       </p>
                                       {app.cancelReason && (
-                                        <p className="text-slate-600 text-xs font-bold mb-3 italic">" {app.cancelReason} "</p>
+                                        <p className="text-slate-600 text-xs font-bold mb-3 italic">&quot; {app.cancelReason} &quot;</p>
                                       )}
                                       <button
                                         onClick={async () => {

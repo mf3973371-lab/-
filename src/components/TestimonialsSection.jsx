@@ -6,7 +6,7 @@ import FloatingAccent from "./FloatingAccent";
 
 const testimonials = [
   {
-    name: "مها القحطاني",
+    name: "مها السيد",
     role: "مستخدمة للتطبيق",
     time: "منذ يومين",
     rating: 5,
@@ -14,7 +14,7 @@ const testimonials = [
     avatar: "https://i.pravatar.cc/150?u=maha",
   },
   {
-    name: "أحمد الجبيري",
+    name: "أحمد فتحي",
     role: "مستخدم منذ 6 شهور",
     time: "منذ شهر",
     rating: 5,

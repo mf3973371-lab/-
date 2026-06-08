@@ -300,8 +300,15 @@ export default function DoctorDetailsPage() {
                   <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-4">
                     <h1 className="text-3xl md:text-4xl font-black text-slate-800">د. {doctor.userName}</h1>
                     <div className="flex items-center gap-1 px-3 py-1 bg-yellow-400/10 text-yellow-600 rounded-full text-sm font-bold border border-yellow-400/20">
-                      <Star className="w-4 h-4 fill-yellow-400" />
-                      4.9
+                      {doctor.rating ? (
+                        <>
+                          <Star className="w-4 h-4 fill-yellow-400" />
+                          <span>{Number(doctor.rating).toFixed(1)}</span>
+                          <span className="text-xs text-slate-400 mr-1 font-bold">({doctor.ratingCount} تقييم)</span>
+                        </>
+                      ) : (
+                        <span className="text-xs font-bold text-slate-400">لا توجد تقييمات</span>
+                      )}
                     </div>
                   </div>
                   
@@ -326,6 +333,62 @@ export default function DoctorDetailsPage() {
                   </div>
                 </div>
               </div>
+            </motion.div>
+
+            {/* Reviews Section */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="bg-white rounded-[3rem] p-8 md:p-12 shadow-xl shadow-primary/5 border border-slate-100 mt-8"
+            >
+              <h3 className="text-2xl font-black text-slate-800 mb-8 flex items-center gap-3">
+                <div className="p-2.5 bg-amber-100 rounded-2xl">
+                  <Star className="text-amber-500 w-6 h-6 fill-current" />
+                </div>
+                <span>تقييمات وآراء المرضى</span>
+              </h3>
+
+              {!doctor.reviews || doctor.reviews.length === 0 ? (
+                <div className="text-center py-10 bg-slate-50 rounded-3xl border border-slate-100">
+                  <Star className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                  <p className="text-slate-500 font-bold text-sm">لا توجد تقييمات لهذا الطبيب بعد</p>
+                  <p className="text-slate-400 text-xs mt-1">كن أول من يقيم بعد إتمام زيارتك!</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {doctor.reviews.map((review) => (
+                    <div key={review.id} className="p-6 rounded-3xl bg-slate-50/50 border border-slate-100 shadow-sm hover:shadow-md transition-all">
+                      <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-black text-sm">
+                            {(review.patientName || "م").substring(0, 1)}
+                          </div>
+                          <div>
+                            <h4 className="font-black text-slate-800 text-sm">{review.patientName || "مريض شفاء"}</h4>
+                            <p className="text-[10px] text-slate-400 font-bold mt-0.5">
+                              {review.createdAt ? new Date(review.createdAt).toLocaleDateString('ar-EG') : ""}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={star}
+                              className={`w-4 h-4 ${review.rating >= star ? "text-amber-400 fill-current" : "text-slate-200"}`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      {review.comment && (
+                        <p className="text-slate-600 font-bold text-sm leading-relaxed pr-2 border-r-2 border-slate-200">
+                          &quot;{review.comment}&quot;
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </motion.div>
           </div>
 

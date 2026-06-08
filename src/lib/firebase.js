@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore, getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDL3iEhI2PzoVFV-YUq4kcsCQrBMHFNhOw",
@@ -10,9 +10,18 @@ const firebaseConfig = {
   appId: "1:376192887840:web:ad601d146cd7008c722045"
 };
 
-// Initialize Firebase only if it hasn't been initialized already
-// This prevents Next.js hot-reloading from throwing an error
+// Initialize Firebase and Firestore safely with force long polling enabled
+// to prevent gRPC streaming connection hangs in Node.js server environments.
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-const db = getFirestore(app);
+
+let db;
+try {
+  db = initializeFirestore(app, {
+    experimentalForceLongPolling: true,
+  });
+} catch (e) {
+  db = getFirestore(app);
+}
 
 export { app, db };
+
