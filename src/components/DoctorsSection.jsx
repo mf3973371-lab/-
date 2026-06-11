@@ -45,6 +45,7 @@ export default function DoctorsSection() {
   const [isLocating, setIsLocating] = useState(false);
   const [locationsMap, setLocationsMap] = useState({});
   const [expandedAddress, setExpandedAddress] = useState(null);
+  const [touchStartX, setTouchStartX] = useState(null);
 
   useEffect(() => {
     const fetchDoctors = async () => {
@@ -109,6 +110,10 @@ export default function DoctorsSection() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  useEffect(() => {
+    setCurrentIndex(0);
+  }, [visibleCount]);
+
   const processedDoctors = useMemo(() => {
     let list = [...rawDoctors];
     
@@ -135,15 +140,50 @@ export default function DoctorsSection() {
   }, [rawDoctors, isSortingByDistance, userLocation, locationsMap]);
 
   const totalDoctors = processedDoctors.length;
-  const maxIndex = Math.max(0, totalDoctors - visibleCount);
+  const totalPages = Math.max(1, Math.ceil(totalDoctors / visibleCount));
+  const maxPage = totalPages - 1;
+  const safePage = Math.min(currentIndex, maxPage);
+  const rangeStart = safePage * visibleCount + 1;
+  const rangeEnd = Math.min((safePage + 1) * visibleCount, totalDoctors);
+  const canNavigate = totalDoctors > visibleCount;
 
   const handleNext = () => {
-    setCurrentIndex((prev) => (prev >= maxIndex ? 0 : prev + 1));
+    setCurrentIndex((prev) => (prev >= maxPage ? 0 : prev + 1));
   };
 
   const handlePrev = () => {
-    setCurrentIndex((prev) => (prev <= 0 ? maxIndex : prev - 1));
+    setCurrentIndex((prev) => (prev <= 0 ? maxPage : prev - 1));
   };
+
+  const handleTouchStart = (e) => {
+    setTouchStartX(e.touches[0].clientX);
+  };
+
+  const handleTouchEnd = (e) => {
+    if (touchStartX === null || !canNavigate) return;
+    const diff = touchStartX - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > 50) {
+      if (diff > 0) handleNext();
+      else handlePrev();
+    }
+    setTouchStartX(null);
+  };
+
+  useEffect(() => {
+    if (currentIndex > maxPage) {
+      setCurrentIndex(maxPage);
+    }
+  }, [currentIndex, maxPage]);
+
+  const pageNumbers = useMemo(() => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, i) => i);
+    }
+    const pages = new Set([0, maxPage, safePage]);
+    if (safePage > 0) pages.add(safePage - 1);
+    if (safePage < maxPage) pages.add(safePage + 1);
+    return [...pages].sort((a, b) => a - b);
+  }, [totalPages, maxPage, safePage]);
 
   // Toggle favorite status
   const toggleFavorite = (id) => {
@@ -173,14 +213,10 @@ export default function DoctorsSection() {
     }
   };
 
-  // Get active doctors to display
-  const displayedDoctors = processedDoctors.slice(currentIndex, currentIndex + visibleCount);
-
-  // If there are not enough doctors to fill the slice (looping around), pad it
-  if (displayedDoctors.length < visibleCount && totalDoctors > visibleCount) {
-    const paddingCount = visibleCount - displayedDoctors.length;
-    displayedDoctors.push(...processedDoctors.slice(0, paddingCount));
-  }
+  const displayedDoctors = processedDoctors.slice(
+    safePage * visibleCount,
+    safePage * visibleCount + visibleCount
+  );
 
   return (
     <section id="doctors" className="py-32 bg-gradient-to-b from-white via-[#f1f7ff] to-white relative z-10 overflow-hidden">
@@ -236,26 +272,19 @@ export default function DoctorsSection() {
             </motion.p>
           </div>
 
-          {/* Luxury Navigation controls */}
-          {totalDoctors > visibleCount && (
-            <motion.div 
+          {canNavigate && (
+            <motion.div
               initial={{ opacity: 0, x: -30 }}
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
-              className="flex gap-4 self-end"
+              className="self-end text-left"
             >
-              <button 
-                onClick={handlePrev}
-                className="w-16 h-16 rounded-2xl bg-white border border-slate-200/80 flex items-center justify-center text-slate-700 hover:text-blue-600 hover:border-blue-400 hover:shadow-xl hover:shadow-blue-500/10 active:scale-95 transition-all cursor-pointer shadow-md group"
-              >
-                <ChevronRight className="w-7 h-7 group-hover:scale-110 transition-transform" />
-              </button>
-              <button 
-                onClick={handleNext}
-                className="w-16 h-16 rounded-2xl bg-white border border-slate-200/80 flex items-center justify-center text-slate-700 hover:text-blue-600 hover:border-blue-400 hover:shadow-xl hover:shadow-blue-500/10 active:scale-95 transition-all cursor-pointer shadow-md group"
-              >
-                <ChevronLeft className="w-7 h-7 group-hover:scale-110 transition-transform" />
-              </button>
+              <p className="text-sm font-black text-slate-500 mb-1">
+                {rangeStart}–{rangeEnd} من {totalDoctors} طبيب
+              </p>
+              <p className="text-xs font-bold text-slate-400">
+                الصفحة {safePage + 1} من {totalPages}
+              </p>
             </motion.div>
           )}
         </div>
@@ -363,11 +392,35 @@ export default function DoctorsSection() {
           </div>
         ) : (
           <div className="relative">
-            {/* Massive Luxury Cards Slider */}
-            <div className="px-1 py-4">
+            {canNavigate && (
+              <>
+                <button
+                  type="button"
+                  onClick={handlePrev}
+                  aria-label="الصفحة السابقة"
+                  className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 z-20 w-14 h-14 rounded-2xl bg-white border border-slate-200/80 items-center justify-center text-slate-700 hover:text-blue-600 hover:border-blue-400 hover:shadow-xl hover:shadow-blue-500/10 active:scale-95 transition-all cursor-pointer shadow-lg group"
+                >
+                  <ChevronRight className="w-6 h-6 group-hover:scale-110 transition-transform" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNext}
+                  aria-label="الصفحة التالية"
+                  className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 z-20 w-14 h-14 rounded-2xl bg-white border border-slate-200/80 items-center justify-center text-slate-700 hover:text-blue-600 hover:border-blue-400 hover:shadow-xl hover:shadow-blue-500/10 active:scale-95 transition-all cursor-pointer shadow-lg group"
+                >
+                  <ChevronLeft className="w-6 h-6 group-hover:scale-110 transition-transform" />
+                </button>
+              </>
+            )}
+
+            <div
+              className="px-1 py-4 touch-pan-y"
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
+            >
               <AnimatePresence mode="wait">
                 <motion.div 
-                  key={currentIndex}
+                  key={safePage}
                   initial={{ opacity: 0, y: 30 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -30 }}
@@ -546,17 +599,56 @@ export default function DoctorsSection() {
               </AnimatePresence>
             </div>
 
-            {/* Pagination Bullet Indicators */}
-            {totalDoctors > visibleCount && (
-              <div className="flex justify-center gap-2.5 mt-16 relative z-10">
-                {Array.from({ length: maxIndex + 1 }).map((_, idx) => (
+            {canNavigate && (
+              <div className="mt-12 relative z-10 space-y-6">
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                   <button
-                    key={idx}
-                    onClick={() => setCurrentIndex(idx)}
-                    className={`h-2.5 rounded-full transition-all duration-300 cursor-pointer ${currentIndex === idx ? "bg-blue-500 w-10 shadow-[0_0_10px_rgba(59,130,246,0.6)]" : "bg-slate-200 hover:bg-slate-300 w-2.5"}`}
-                    aria-label={`Go to slide ${idx + 1}`}
-                  />
-                ))}
+                    type="button"
+                    onClick={handlePrev}
+                    className="w-full sm:w-auto min-w-[140px] h-12 px-6 rounded-2xl bg-white border border-slate-200/80 flex items-center justify-center gap-2 text-slate-700 font-black hover:text-blue-600 hover:border-blue-400 hover:shadow-lg active:scale-95 transition-all cursor-pointer shadow-sm"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                    السابق
+                  </button>
+
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/80 border border-slate-100 shadow-sm flex-wrap justify-center">
+                    {pageNumbers.map((idx, i) => {
+                      const prevIdx = pageNumbers[i - 1];
+                      const showEllipsis = i > 0 && idx - prevIdx > 1;
+                      return (
+                        <span key={idx} className="flex items-center gap-2">
+                          {showEllipsis && <span className="text-slate-300 font-black px-1">…</span>}
+                          <button
+                            type="button"
+                            onClick={() => setCurrentIndex(idx)}
+                            aria-label={`الانتقال للصفحة ${idx + 1}`}
+                            aria-current={safePage === idx ? "page" : undefined}
+                            className={`rounded-full transition-all duration-300 cursor-pointer ${
+                              safePage === idx
+                                ? "bg-blue-500 text-white w-9 h-9 text-sm font-black shadow-[0_0_10px_rgba(59,130,246,0.4)]"
+                                : "bg-slate-100 hover:bg-slate-200 text-slate-500 w-9 h-9 text-sm font-bold"
+                            }`}
+                          >
+                            {idx + 1}
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleNext}
+                    className="w-full sm:w-auto min-w-[140px] h-12 px-6 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-blue-500/20 active:scale-95 transition-all cursor-pointer"
+                  >
+                    التالي
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <p className="text-center text-xs font-bold text-slate-400 md:hidden">
+                  اسحب يميناً أو يساراً للتنقل بين الأطباء
+                </p>
               </div>
             )}
           </div>
