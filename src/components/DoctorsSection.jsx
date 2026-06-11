@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MapPin, DollarSign, Loader2, Stethoscope, Phone, ChevronLeft, ChevronRight, Star, ShieldCheck, Heart, CheckCircle2, HeartPulse, Activity } from "lucide-react";
+import { MapPin, DollarSign, Loader2, Stethoscope, Phone, ChevronLeft, ChevronRight, Star, ShieldCheck, Heart, CheckCircle2, HeartPulse, Activity, X } from "lucide-react";
 import Link from "next/link";
 import FloatingAccent from "./FloatingAccent";
 import { db } from "@/lib/firebase";
@@ -44,6 +44,7 @@ export default function DoctorsSection() {
   const [isSortingByDistance, setIsSortingByDistance] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [locationsMap, setLocationsMap] = useState({});
+  const [expandedAddress, setExpandedAddress] = useState(null);
 
   useEffect(() => {
     const fetchDoctors = async () => {
@@ -496,12 +497,20 @@ export default function DoctorsSection() {
                           <div className="grid grid-cols-1 gap-4 mb-6 relative z-10">
                             
                             {/* Address Box */}
-                            <div className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50/70 border border-slate-100 hover:bg-white hover:border-blue-400/40 hover:shadow-md hover:shadow-blue-500/5 transition-all duration-300 group/item h-16">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedAddress({
+                                address: doctor.address || "العنوان غير محدد",
+                                doctorName: doctor.userName,
+                              })}
+                              className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50/70 border border-slate-100 hover:bg-white hover:border-blue-400/40 hover:shadow-md hover:shadow-blue-500/5 transition-all duration-300 group/item h-16 w-full text-right cursor-pointer"
+                              aria-label="عرض العنوان كاملاً"
+                            >
                               <div className="w-10 h-10 rounded-xl bg-white border border-slate-200/60 flex items-center justify-center text-slate-400 group-hover/item:text-blue-500 group-hover/item:border-blue-200 transition-colors shrink-0 shadow-sm">
                                 <MapPin className="w-4.5 h-4.5" />
                               </div>
-                              <span className="text-slate-700 text-sm font-black truncate max-w-[210px] sm:max-w-[250px]">{doctor.address || "العنوان غير محدد"}</span>
-                            </div>
+                              <span className="text-slate-700 text-sm font-black truncate max-w-[210px] sm:max-w-[250px] flex-1 min-w-0">{doctor.address || "العنوان غير محدد"}</span>
+                            </button>
 
                             {/* Phone Box */}
                             <div className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50/70 border border-slate-100 hover:bg-white hover:border-blue-400/40 hover:shadow-md hover:shadow-blue-500/5 transition-all duration-300 group/item h-16">
@@ -553,6 +562,49 @@ export default function DoctorsSection() {
           </div>
         )}
       </div>
+
+      <AnimatePresence>
+        {expandedAddress && (
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md"
+            dir="rtl"
+            onClick={() => setExpandedAddress(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md bg-white/90 backdrop-blur-2xl rounded-[2rem] shadow-2xl border border-white/50 overflow-hidden relative"
+            >
+              <div className="p-6 flex justify-between items-center border-b border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setExpandedAddress(null)}
+                  className="p-2 rounded-full bg-slate-100/50 hover:bg-red-50 text-slate-500 hover:text-red-500 transition-colors"
+                  aria-label="إغلاق"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+                <div className="flex items-center gap-2 text-blue-600 font-black">
+                  <MapPin className="w-5 h-5" />
+                  <span>عنوان العيادة</span>
+                </div>
+              </div>
+              <div className="p-6">
+                {expandedAddress.doctorName && (
+                  <p className="text-sm font-bold text-slate-500 mb-3">
+                    د. {expandedAddress.doctorName}
+                  </p>
+                )}
+                <p className="text-slate-800 text-base font-black leading-relaxed break-words">
+                  {expandedAddress.address}
+                </p>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </section>
   );
 }

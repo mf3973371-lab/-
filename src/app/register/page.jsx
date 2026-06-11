@@ -88,7 +88,7 @@ export default function RegisterPage() {
       if (response.ok || data.message === "Done") {
         const token = data.access_token;
         setAuthToken(token);
-        
+
         // التحقق ما إذا كان الملف الشخصي مكتملاً بالفعل
         const isProfileComplete = data.profileCompleted === true || data.user?.profileCompleted === true;
 
@@ -130,7 +130,7 @@ export default function RegisterPage() {
       if (response.ok || data.message === "Done") {
         const token = data.access_token;
         setAuthToken(token);
-        
+
         // التحقق ما إذا كان الملف الشخصي مكتملاً بالفعل
         const isProfileComplete = data.profileCompleted === true || data.user?.profileCompleted === true;
 
@@ -296,7 +296,7 @@ export default function RegisterPage() {
 
       const data = await response.json();
       if (response.ok) {
-        
+
         // --- FIREBASE LOCATION SAVE LOGIC ---
         if (formData.latitude && formData.longitude) {
           try {
@@ -622,7 +622,7 @@ export default function RegisterPage() {
                               navigator.geolocation.getCurrentPosition(async (position) => {
                                 const lat = position.coords.latitude;
                                 const lon = position.coords.longitude;
-                                
+
                                 setFormData(prev => ({
                                   ...prev,
                                   latitude: lat,

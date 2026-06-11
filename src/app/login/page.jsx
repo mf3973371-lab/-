@@ -321,16 +321,16 @@ export default function LoginPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-4">
-          <div className="flex flex-col items-center justify-center mt-4">
-            <GoogleLogin
-              onSuccess={handleGoogleSuccess}
-              onError={handleGoogleError}
-              theme="outline"
-              shape="pill"
-              size="large"
-              locale="ar"
-            />
-          </div>
+            <div className="flex flex-col items-center justify-center mt-4">
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={handleGoogleError}
+                theme="outline"
+                shape="pill"
+                size="large"
+                locale="ar"
+              />
+            </div>
           </div>
 
           <div className="mt-12 text-center">
