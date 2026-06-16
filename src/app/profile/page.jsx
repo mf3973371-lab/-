@@ -48,6 +48,7 @@ export default function ProfilePage() {
   const [showUpdatePasswordModal, setShowUpdatePasswordModal] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
+  const [chatLoading, setChatLoading] = useState(false);
   const [editingPatient, setEditingPatient] = useState(null);
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [ratingAppointment, setRatingAppointment] = useState(null);
@@ -661,6 +662,116 @@ export default function ProfilePage() {
       alert("خطأ في الاتصال بالسيرفر");
     } finally {
       setUpdateLoading(false);
+    }
+  };
+
+  const handleStartChat = async (targetUser, targetRole) => {
+    if (!targetUser) {
+      alert("بيانات المستخدم غير مكتملة");
+      return;
+    }
+
+    if (!userData) {
+      alert("يجب تسجيل الدخول أولاً");
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("انتهت الجلسة، يرجى تسجيل الدخول مرة أخرى");
+      router.push("/login");
+      return;
+    }
+
+    const currentUserId = userData._id || userData.id;
+    const targetUserId = targetUser._id || targetUser.id;
+
+    if (!currentUserId || !targetUserId) {
+      alert("بيانات المستخدم غير مكتملة لبدء المحادثة");
+      return;
+    }
+
+    // Role normalization
+    const myRole = (localStorage.getItem("role") || "patient").toLowerCase();
+    
+    let doctorId, doctorName, doctorAvatar;
+    let patientId, patientName, patientAvatar;
+
+    if (myRole === "doctor") {
+      // Current user is doctor, target is patient/companion
+      doctorId = currentUserId;
+      doctorName = userData.userName || `${userData.fName} ${userData.lName}`.trim() || "طبيب";
+      doctorAvatar = userData.gender?.toLowerCase() === "female" ? "/doctorgirl.png" : "/doctorman.png";
+
+      patientId = targetUserId;
+      patientName = targetUser.userName || `${targetUser.fName} ${targetUser.lName}`.trim() || "مريض";
+      patientAvatar = targetUser.gender?.toLowerCase() === "female" ? "/person2.png" : "/person1.png";
+    } else {
+      // Current user is patient/companion, target is doctor
+      doctorId = targetUserId;
+      doctorName = targetUser.userName || `${targetUser.fName} ${targetUser.lName}`.trim() || "طبيب";
+      
+      const doctorNameLower = doctorName.toLowerCase();
+      const isFemaleDoctor = targetUser.gender?.toLowerCase() === "female" || 
+                             doctorNameLower.includes("mrehan") || 
+                             doctorNameLower.includes("loujain") ||
+                             doctorNameLower.includes("sara") ||
+                             doctorNameLower.includes("salma") ||
+                             doctorNameLower.includes("nourhan") ||
+                             doctorNameLower.includes("نهى") || 
+                             doctorNameLower.includes("سارة") || 
+                             doctorNameLower.includes("فاطمة") || 
+                             doctorNameLower.includes("أميرة") ||
+                             doctorNameLower.includes("هند") ||
+                             doctorNameLower.includes("ميريهان") ||
+                             (targetUser.specialization && targetUser.specialization.includes("نساء"));
+      doctorAvatar = isFemaleDoctor ? "/doctorgirl.png" : "/doctorman.png";
+
+      patientId = currentUserId;
+      patientName = userData.userName || `${userData.fName} ${userData.lName}`.trim() || "مريض";
+      patientAvatar = userData.gender?.toLowerCase() === "female" ? "/person2.png" : "/person1.png";
+    }
+
+    setChatLoading(true);
+
+    try {
+      // Check if chat already exists
+      const chatsRef = collection(db, "chats");
+      const q = query(chatsRef, where("participants", "array-contains", currentUserId));
+      const querySnapshot = await getDocs(q);
+      
+      let existingChatId = null;
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.participants && data.participants.includes(targetUserId)) {
+          existingChatId = doc.id;
+        }
+      });
+
+      if (existingChatId) {
+        router.push(`/chat?chatId=${existingChatId}`);
+      } else {
+        // Create new chat
+        const newChatRef = await addDoc(collection(db, "chats"), {
+          participants: [currentUserId, targetUserId],
+          patientId: patientId,
+          patientName: patientName,
+          patientAvatar: patientAvatar,
+          doctorId: doctorId,
+          doctorName: doctorName,
+          doctorAvatar: doctorAvatar,
+          lastMessage: "تم بدء المحادثة...",
+          lastMessageTime: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+        
+        router.push(`/chat?chatId=${newChatRef.id}`);
+      }
+    } catch (err) {
+      console.error("Error starting chat:", err);
+      alert("حدث خطأ أثناء فتح المحادثة");
+    } finally {
+      setChatLoading(false);
     }
   };
 
@@ -1500,6 +1611,15 @@ export default function ProfilePage() {
                               
                               <button
                                 type="button"
+                                onClick={() => handleStartChat(app.patientId || app.companionId, app.patientId ? "patient" : "companion")}
+                                disabled={chatLoading}
+                                className="px-5 py-2 bg-blue-50 text-blue-600 rounded-xl font-bold text-xs hover:bg-blue-600 hover:text-white transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap border border-blue-100"
+                              >
+                                {chatLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MessageCircle className="w-3.5 h-3.5 shrink-0" />}
+                                تواصل
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => handleCompleteAppointment(app)}
                                 disabled={completeLoading === (app._id || app.id)}
                                 className="px-5 py-2 bg-emerald-50 text-emerald-600 rounded-xl font-bold text-xs hover:bg-emerald-600 hover:text-white transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap border border-emerald-100"
@@ -1580,6 +1700,14 @@ export default function ProfilePage() {
                               <Badge label="العمر" value={patient.age ? `${patient.age} سنة` : "غير محدد"} color="bg-blue-50 text-blue-600" />
                               <Badge label="فصيلة" value={patient.blood || "غير محدد"} color="bg-red-50 text-red-600" />
                               <Badge label="التشخيص" value={patient.disease || "سليم"} color="bg-purple-50 text-purple-600" />
+                              <button
+                                onClick={() => handleStartChat(patient, "patient")}
+                                disabled={chatLoading}
+                                className="px-4 py-2 bg-blue-50 text-blue-600 rounded-xl font-bold text-xs hover:bg-blue-600 hover:text-white transition-all flex items-center gap-1 cursor-pointer border border-blue-100"
+                              >
+                                {chatLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MessageCircle className="w-3.5 h-3.5" />}
+                                تواصل
+                              </button>
                               <button
                                 onClick={() => setEditingPatient(patient)}
                                 className="px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-xl font-bold text-xs transition-all flex items-center gap-1 cursor-pointer"
@@ -2019,6 +2147,18 @@ export default function ProfilePage() {
                               </div>
 
                                 <div className="flex flex-col gap-2">
+                                  {app.status !== 'canceled' && app.doctorId && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleStartChat(app.doctorId, "doctor")}
+                                      disabled={chatLoading}
+                                      className="relative z-50 cursor-pointer px-6 py-3 bg-blue-50 text-blue-600 rounded-xl font-black text-sm hover:bg-blue-600 hover:text-white transition-all shadow-sm flex items-center gap-2 border border-blue-100"
+                                    >
+                                      {chatLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageCircle className="w-4 h-4" />}
+                                      تواصل مع الطبيب
+                                    </button>
+                                  )}
+
                                   {app.status !== 'canceled' && (
                                     <button
                                       type="button"
