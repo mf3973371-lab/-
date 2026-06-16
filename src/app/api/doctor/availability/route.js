@@ -4,9 +4,12 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const date = searchParams.get('date');
+    const doctorId = searchParams.get('doctorId');
     const token = request.headers.get('authorization');
     
-    const apiUrl = `https://shefaa-app.onrender.com/doctor/AvailableTime${date ? `?date=${date}` : ''}`;
+    const apiUrl = doctorId
+      ? `https://shefaa-app.onrender.com/doctor/AvailableTime/${doctorId}${date ? `?date=${date}` : ''}`
+      : `https://shefaa-app.onrender.com/doctor/AvailableTime${date ? `?date=${date}` : ''}`;
     
     const response = await fetch(apiUrl, {
       method: 'GET',

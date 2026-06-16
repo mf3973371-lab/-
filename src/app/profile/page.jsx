@@ -182,10 +182,13 @@ export default function ProfilePage() {
   }, [appointmentForm.date, userData?.role]);
 
   const fetchAvailability = async (date) => {
+    const doctorId = userData?._id || userData?.id;
+    if (!doctorId) return;
+
     setAvailLoading(true);
     const token = localStorage.getItem("token");
     try {
-      const response = await fetch(`/api/doctor/availability?date=${date}`, {
+      const response = await fetch(`/api/doctor/availability?date=${date}&doctorId=${doctorId}`, {
         method: "GET",
         headers: {
           "authorization": `doctor ${token}`
